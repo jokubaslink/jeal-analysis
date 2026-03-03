@@ -1,6 +1,6 @@
 import hashlib
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,11 @@ class UserCreate(BaseModel):
     grade_year: int | None = None
     age_group: str | None = None
     city: str | None = None
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
 
 
 def get_db() -> Session:
@@ -54,6 +59,46 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+
+@app.post("/register")
+def register_user(payload: UserCreate, db: Session = Depends(get_db)):
+    # Reuse the same logic as create_user for now
+    password_hash = hashlib.sha256(payload.password.encode("utf-8")).hexdigest()
+
+    user = models.User(
+        email=payload.email,
+        password_hash=password_hash,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        school=payload.school,
+        grade_year=payload.grade_year,
+        age_group=payload.age_group,
+        city=payload.city,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.post("/login")
+def login(payload: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    password_hash = hashlib.sha256(payload.password.encode("utf-8")).hexdigest()
+    if user.password_hash != password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    return {"message": "Login successful", "user_id": str(user.id)}
 
 
 @app.get("/users")
