@@ -22,7 +22,7 @@ export default function Login() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      login(result.user_id || result.token || "session");
+      login(result.token || result.user_id || "session");
       navigate(from, { replace: true });
     } catch (error) {
       setErrorMessage(error.message);

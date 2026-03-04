@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 
 export default function Register() {
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordHint, setPasswordHint] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -16,14 +19,23 @@ export default function Register() {
     [password, confirmPassword]
   );
 
-  const canSubmit = email.trim() && password && confirmPassword && passwordsMatch;
+  const passwordIsLongEnough = password.length >= 8;
+  const passwordHasUpper = /[A-Z]/.test(password);
+  const passwordHasLower = /[a-z]/.test(password);
+  const passwordHasDigit = /\d/.test(password);
+  const passwordHasSpecial = /[^A-Za-z0-9]/.test(password);
+
+  const passwordIsComplex =
+    passwordIsLongEnough && passwordHasUpper && passwordHasLower && passwordHasDigit && passwordHasSpecial;
+
+  const canSubmit = email.trim() && passwordIsComplex && confirmPassword && passwordsMatch;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setErrorMessage("");
     setIsSubmitting(true);
     try {
-      await apiFetch("/register", {
+      const result = await apiFetch("/register", {
         method: "POST",
         body: JSON.stringify({
           email,
@@ -36,7 +48,9 @@ export default function Register() {
           city: "",
         }),
       });
-      navigate("/login", { replace: true });
+      // Treat successful registration as login and send user to dashboard (profile/main area)
+      login(result.token || result.id || "session");
+      navigate("/dashboard", { replace: true });
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -80,10 +94,26 @@ export default function Register() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
-            minLength={6}
+            minLength={8}
             required
           />
-          <span style={styles.hint}>At least 6 characters.</span>
+          <div style={styles.hintList}>
+            <span style={styles.hintItem}>
+              {passwordIsLongEnough ? "✓" : "•"} At least 8 characters
+            </span>
+            <span style={styles.hintItem}>
+              {passwordHasUpper ? "✓" : "•"} One uppercase letter
+            </span>
+            <span style={styles.hintItem}>
+              {passwordHasLower ? "✓" : "•"} One lowercase letter
+            </span>
+            <span style={styles.hintItem}>
+              {passwordHasDigit ? "✓" : "•"} One number
+            </span>
+            <span style={styles.hintItem}>
+              {passwordHasSpecial ? "✓" : "•"} One special character
+            </span>
+          </div>
         </div>
 
         <div style={styles.field}>
@@ -196,6 +226,20 @@ const styles = {
     fontSize: "12px",
     color: "black",
     opacity: 0.6,
+  },
+  hintList: {
+    marginTop: "4px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    fontSize: "12px",
+    color: "black",
+    opacity: 0.8,
+  },
+  hintItem: {
+    display: "flex",
+    gap: "4px",
+    alignItems: "center",
   },
   error: {
     fontSize: "12px",

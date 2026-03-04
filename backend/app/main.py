@@ -1,7 +1,7 @@
 import hashlib
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
@@ -20,6 +20,26 @@ class UserCreate(BaseModel):
     grade_year: int | None = None
     age_group: str | None = None
     city: str | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        # Enforce minimum length
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+
+        # Enforce basic complexity: upper, lower, digit, special
+        has_upper = any(c.isupper() for c in v)
+        has_lower = any(c.islower() for c in v)
+        has_digit = any(c.isdigit() for c in v)
+        has_special = any(not c.isalnum() for c in v)
+
+        if not (has_upper and has_lower and has_digit and has_special):
+            raise ValueError(
+                "Password must include upper and lower case letters, a number, and a special character."
+            )
+
+        return v
 
 
 class UserLogin(BaseModel):
