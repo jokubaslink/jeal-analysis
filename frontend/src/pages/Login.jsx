@@ -1,16 +1,34 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { apiFetch } from "../api/client.js";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || "/dashboard";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    login();
-    navigate(from, { replace: true });
+    setErrorMessage("");
+    setIsSubmitting(true);
+    try {
+      const result = await apiFetch("/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      login(result.user_id || result.token || "session");
+      navigate(from, { replace: true });
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -18,10 +36,27 @@ export default function Login() {
       <form style={styles.card} onSubmit={handleSubmit}>
         <h2 style={{ margin: 0, color: "black" }}>Login</h2>
 
-        <input style={styles.input} placeholder="Email" required />
-        <input style={styles.input} placeholder="Password" type="password" required />
+        <input
+          style={styles.input}
+          placeholder="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <input
+          style={styles.input}
+          placeholder="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        {errorMessage ? <p style={styles.error}>{errorMessage}</p> : null}
 
-        <button style={styles.button} type="submit">Login</button>
+        <button style={styles.button} type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Logging in..." : "Login"}
+        </button>
       </form>
     </div>
   );
@@ -48,4 +83,5 @@ const styles = {
     color: "white",
     cursor: "pointer",
   },
+  error: { margin: 0, color: "#dc2626", fontSize: "14px" },
 };

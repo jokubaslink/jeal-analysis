@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../api/client.js";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -7,6 +8,8 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const passwordsMatch = useMemo(
     () => password.length > 0 && confirmPassword.length > 0 && password === confirmPassword,
@@ -15,12 +18,30 @@ export default function Register() {
 
   const canSubmit = email.trim() && password && confirmPassword && passwordsMatch;
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-
-    // UI-only demo: no backend call yet
-    // In a real app, call your API here.
-    navigate("/login", { replace: true });
+    setErrorMessage("");
+    setIsSubmitting(true);
+    try {
+      await apiFetch("/register", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          password,
+          first_name: "",
+          last_name: "",
+          school: "",
+          grade_year: null,
+          age_group: "",
+          city: "",
+        }),
+      });
+      navigate("/login", { replace: true });
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -93,8 +114,13 @@ export default function Register() {
           )}
         </div>
 
-        <button style={{ ...styles.button, opacity: canSubmit ? 1 : 0.6 }} disabled={!canSubmit}>
-          Create account
+        {errorMessage ? <p style={styles.error}>{errorMessage}</p> : null}
+
+        <button
+          style={{ ...styles.button, opacity: canSubmit && !isSubmitting ? 1 : 0.6 }}
+          disabled={!canSubmit || isSubmitting}
+        >
+          {isSubmitting ? "Creating..." : "Create account"}
         </button>
 
         <div style={styles.footer}>

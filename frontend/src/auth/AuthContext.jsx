@@ -1,28 +1,32 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { AUTH_TOKEN_STORAGE_KEY, getAuthToken, setAuthToken } from "../api/client.js";
 
 const AuthContext = createContext(null);
 
 function readInitialAuth() {
-  return localStorage.getItem("demo_authed") === "true";
+  return !!getAuthToken();
 }
 
 export function AuthProvider({ children }) {
   const [isAuthed, setIsAuthed] = useState(readInitialAuth);
 
-  const login = () => {
-    localStorage.setItem("demo_authed", "true");
+  const login = (token) => {
+    setAuthToken(token);
     setIsAuthed(true);
   };
 
   const logout = () => {
-    localStorage.removeItem("demo_authed");
+    setAuthToken(null);
     setIsAuthed(false);
   };
 
   // Optional: keep tabs/windows in sync
   useEffect(() => {
     const onStorage = (e) => {
-      if (e.key === "demo_authed") setIsAuthed(e.newValue === "true");
+      if (e.key === AUTH_TOKEN_STORAGE_KEY) {
+        setIsAuthed(!!e.newValue);
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);

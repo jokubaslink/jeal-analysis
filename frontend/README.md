@@ -1,5 +1,17 @@
 # React + Vite
 
+## Environment variables
+
+Create `frontend/.env` (or copy from `.env.example`) and set:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_AUTH_TOKEN_STORAGE_KEY=jeal_auth_token
+```
+
+- `VITE_API_BASE_URL` is used for all API calls.
+- `VITE_AUTH_TOKEN_STORAGE_KEY` controls where the auth token is persisted in `localStorage`.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
