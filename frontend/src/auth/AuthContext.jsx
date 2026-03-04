@@ -1,10 +1,11 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { setAuthToken } from "../api/client.js";
+import { AUTH_TOKEN_STORAGE_KEY, getAuthToken, setAuthToken } from "../api/client.js";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [isAuthed, setIsAuthed] = useState(() => !!localStorage.getItem("jeal_auth_token"));
+  const [isAuthed, setIsAuthed] = useState(() => !!getAuthToken());
 
   const login = (token) => {
     setAuthToken(token || "session");
@@ -19,7 +20,7 @@ export function AuthProvider({ children }) {
   // Optional: keep tabs/windows in sync
   useEffect(() => {
     const onStorage = (e) => {
-      if (e.key === "jeal_auth_token") setIsAuthed(!!e.newValue);
+      if (e.key === AUTH_TOKEN_STORAGE_KEY) setIsAuthed(!!e.newValue);
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);

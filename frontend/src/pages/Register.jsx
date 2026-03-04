@@ -1,16 +1,14 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
-import { useAuth } from "../auth/AuthContext.jsx";
 
 export default function Register() {
-  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordHint, setPasswordHint] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -27,18 +25,21 @@ export default function Register() {
 
   const passwordIsComplex =
     passwordIsLongEnough && passwordHasUpper && passwordHasLower && passwordHasDigit && passwordHasSpecial;
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  const canSubmit = email.trim() && passwordIsComplex && confirmPassword && passwordsMatch;
+  const canSubmit = emailIsValid && passwordIsComplex && confirmPassword && passwordsMatch;
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!canSubmit) return;
+    setSuccessMessage("");
     setErrorMessage("");
     setIsSubmitting(true);
     try {
-      const result = await apiFetch("/register", {
+      await apiFetch("/register", {
         method: "POST",
         body: JSON.stringify({
-          email,
+          email: email.trim(),
           password,
           first_name: "",
           last_name: "",
@@ -48,9 +49,8 @@ export default function Register() {
           city: "",
         }),
       });
-      // Treat successful registration as login and send user to dashboard (profile/main area)
-      login(result.token || result.id || "session");
-      navigate("/dashboard", { replace: true });
+      setSuccessMessage("Registration successful. Redirecting to login...");
+      setTimeout(() => navigate("/login", { replace: true }), 1200);
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -72,7 +72,10 @@ export default function Register() {
           </label>
           <input
             id="email"
-            style={styles.input}
+            style={{
+              ...styles.input,
+              borderColor: email.length === 0 || emailIsValid ? "#ccc" : "#dc2626",
+            }}
             type="email"
             placeholder="you@example.com"
             value={email}
@@ -80,6 +83,9 @@ export default function Register() {
             autoComplete="email"
             required
           />
+          {email.length > 0 && !emailIsValid ? (
+            <span style={styles.error}>Enter a valid email address.</span>
+          ) : null}
         </div>
 
         <div style={styles.field}>
@@ -136,7 +142,7 @@ export default function Register() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             autoComplete="new-password"
-            minLength={6}
+            minLength={8}
             required
           />
           {confirmPassword.length > 0 && !passwordsMatch && (
@@ -145,6 +151,7 @@ export default function Register() {
         </div>
 
         {errorMessage ? <p style={styles.error}>{errorMessage}</p> : null}
+        {successMessage ? <p style={styles.success}>{successMessage}</p> : null}
 
         <button
           style={{ ...styles.button, opacity: canSubmit && !isSubmitting ? 1 : 0.6 }}
@@ -244,6 +251,11 @@ const styles = {
   error: {
     fontSize: "12px",
     color: "#dc2626",
+    fontWeight: 600,
+  },
+  success: {
+    fontSize: "12px",
+    color: "#16a34a",
     fontWeight: 600,
   },
   button: {

@@ -37,10 +37,11 @@ export async function apiFetch(path, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const message =
-      typeof payload === "object" && payload?.detail
-        ? payload.detail
-        : `Request failed with status ${response.status}`;
+    let message = `Request failed with status ${response.status}`;
+    if (typeof payload === "object" && payload !== null && payload.detail !== undefined) {
+      const d = payload.detail;
+      message = Array.isArray(d) ? d.map((x) => x.msg || JSON.stringify(x)).join("; ") : String(d);
+    }
     throw new Error(message);
   }
 
