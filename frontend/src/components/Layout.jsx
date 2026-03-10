@@ -1,8 +1,14 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 
 export default function Layout() {
-  const { isAuthed } = useAuth();
+  const { isAuthed, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   const linkStyle = ({ isActive }) => ({
     textDecoration: "none",
@@ -30,7 +36,12 @@ export default function Layout() {
             )}
 
             {isAuthed && (
-              <NavLink to="/dashboard" style={linkStyle}>Dashboard</NavLink>
+              <>
+                <NavLink to="/dashboard" style={linkStyle}>Dashboard</NavLink>
+                <button type="button" onClick={handleLogout} style={styles.logoutButton}>
+                  Logout
+                </button>
+              </>
             )}
           </nav>
         </div>
@@ -57,4 +68,13 @@ const styles = {
   logo: { margin: 0, color: "black" },
   nav: { display: "flex", gap: "14px" },
   main: { width: "100%", padding: "40px", boxSizing: "border-box" },
+  logoutButton: {
+    padding: "8px 14px",
+    borderRadius: "6px",
+    border: "1px solid #ddd",
+    background: "#f9fafb",
+    color: "black",
+    fontWeight: 500,
+    cursor: "pointer",
+  },
 };

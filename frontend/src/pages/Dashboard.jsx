@@ -7,19 +7,24 @@ export default function Dashboard() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [usersCount, setUsersCount] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
-    const loadUsers = async () => {
+    const loadData = async () => {
       try {
         const users = await apiFetch("/users");
-        if (!ignore) setUsersCount(Array.isArray(users) ? users.length : 0);
+        const cats = await apiFetch("/interest-categories");
+        if (!ignore) {
+          setUsersCount(Array.isArray(users) ? users.length : 0);
+          setCategories(Array.isArray(cats) ? cats : []);
+        }
       } catch (error) {
         if (!ignore) setErrorMessage(error.message);
       }
     };
-    loadUsers();
+    loadData();
     return () => {
       ignore = true;
     };
@@ -36,6 +41,19 @@ export default function Dashboard() {
       <p style={{ color: "black" }}>You are logged in.</p>
       {usersCount !== null ? (
         <p style={{ color: "black" }}>Registered users: {usersCount}</p>
+      ) : null}
+      {categories.length > 0 ? (
+        <div style={{ marginTop: "16px" }}>
+          <h2 style={{ color: "black", marginBottom: "8px" }}>Interest categories</h2>
+          <ul>
+            {categories.map((c) => (
+              <li key={c.id} style={{ color: "black" }}>
+                <strong>{c.name}</strong>
+                {c.description ? ` – ${c.description}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       {errorMessage ? <p style={{ color: "#dc2626" }}>{errorMessage}</p> : null}
       <button onClick={handleLogout} style={btn}>Logout</button>

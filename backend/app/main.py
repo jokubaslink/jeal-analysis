@@ -44,6 +44,10 @@ class UserCreate(BaseModel):
     password: str
     first_name: str | None = None
     last_name: str | None = None
+    name: str | None = None
+    programme: str | None = None
+    year: int | None = None
+    faculty: str | None = None
     school: str | None = None
     grade_year: int | None = None
     age_group: str | None = None
@@ -75,6 +79,24 @@ class UserLogin(BaseModel):
     password: str
 
 
+class InterestCategoryOut(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+
+
+class InterestOut(BaseModel):
+    id: str
+    category_id: str
+    name: str
+    description: str | None = None
+
+
+class UserInterestAssign(BaseModel):
+    interest_id: str
+    level: str | None = None
+
+
 def get_db() -> Session:
     db = SessionLocal()
     try:
@@ -98,6 +120,10 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
         password_hash=password_hash,
         first_name=payload.first_name,
         last_name=payload.last_name,
+        name=payload.name,
+        programme=payload.programme,
+        year=payload.year,
+        faculty=payload.faculty,
         school=payload.school,
         grade_year=payload.grade_year,
         age_group=payload.age_group,
@@ -118,6 +144,10 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
         password_hash=password_hash,
         first_name=payload.first_name,
         last_name=payload.last_name,
+        name=payload.name,
+        programme=payload.programme,
+        year=payload.year,
+        faculty=payload.faculty,
         school=payload.school,
         grade_year=payload.grade_year,
         age_group=payload.age_group,
@@ -159,3 +189,96 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @app.get("/users")
 def list_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
+
+
+@app.get("/interest-categories", response_model=list[InterestCategoryOut])
+def list_interest_categories(db: Session = Depends(get_db)):
+    categories = db.query(models.InterestCategory).order_by(models.InterestCategory.name).all()
+    return [
+        InterestCategoryOut(
+            id=str(c.id),
+            name=c.name,
+            description=c.description,
+        )
+        for c in categories
+    ]
+
+
+@app.get("/interests", response_model=list[InterestOut])
+def list_interests(category_id: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(models.Interest)
+    if category_id is not None:
+        query = query.filter(models.Interest.category_id == category_id)
+    interests = query.order_by(models.Interest.name).all()
+    return [
+        InterestOut(
+            id=str(i.id),
+            category_id=str(i.category_id),
+            name=i.name,
+            description=i.description,
+        )
+        for i in interests
+    ]
+
+
+@app.post("/users/{user_id}/interests")
+def assign_interest_to_user(
+    user_id: str,
+    payload: UserInterestAssign,
+    db: Session = Depends(get_db),
+):
+    # ensure user exists
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # ensure interest exists
+    interest = (
+        db.query(models.Interest)
+        .filter(models.Interest.id == payload.interest_id)
+        .first()
+    )
+    if not interest:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
+
+    # upsert user_interest (no duplicates due to PK)
+    link = (
+        db.query(models.UserInterest)
+        .filter(
+            models.UserInterest.user_id == user_id,
+            models.UserInterest.interest_id == payload.interest_id,
+        )
+        .first()
+    )
+    if link is None:
+        link = models.UserInterest(
+            user_id=user_id,
+            interest_id=payload.interest_id,
+            level=payload.level,
+        )
+        db.add(link)
+    else:
+        link.level = payload.level
+
+    db.commit()
+    return {"message": "Interest assigned to user."}
+
+
+@app.get("/users/{user_id}/interests", response_model=list[InterestOut])
+def list_user_interests(user_id: str, db: Session = Depends(get_db)):
+    links = (
+        db.query(models.UserInterest)
+        .join(models.Interest, models.UserInterest.interest_id == models.Interest.id)
+        .filter(models.UserInterest.user_id == user_id)
+        .all()
+    )
+    interests = [link.interest for link in links]
+    return [
+        InterestOut(
+            id=str(i.id),
+            category_id=str(i.category_id),
+            name=i.name,
+            description=i.description,
+        )
+        for i in interests
+    ]
