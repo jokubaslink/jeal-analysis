@@ -3,6 +3,7 @@ import Main from "./pages/Main.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import Interests from "./pages/Interests.jsx";
 import Layout from "./components/Layout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
@@ -19,6 +20,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/interests"
+          element={
+            <ProtectedRoute>
+              <Interests />
             </ProtectedRoute>
           }
         />
