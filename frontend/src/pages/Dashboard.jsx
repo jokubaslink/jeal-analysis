@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
 
 export default function Dashboard() {
-  const { userId } = useAuth();
+  const navigate = useNavigate();
+  const { userId, logout } = useAuth();
   const [usersCount, setUsersCount] = useState(null);
   const [categories, setCategories] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [profile, setProfile] = useState(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [formValues, setFormValues] = useState(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccessMessage, setProfileSuccessMessage] = useState("");
+  const [profileErrorMessage, setProfileErrorMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -19,6 +26,18 @@ export default function Dashboard() {
           const me = await apiFetch(`/users/${userId}`);
           if (!ignore) {
             setProfile(me);
+            setFormValues({
+              email: me.email || "",
+              first_name: me.first_name || "",
+              last_name: me.last_name || "",
+              programme: me.programme || "",
+              year: me.year ?? "",
+              faculty: me.faculty || "",
+              school: me.school || "",
+              grade_year: me.grade_year ?? "",
+              age_group: me.age_group || "",
+              city: me.city || "",
+            });
           }
         }
 
@@ -38,10 +57,9 @@ export default function Dashboard() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [userId]);
 
   const displayName =
-    profile?.name ||
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
     "Not provided";
 
@@ -49,6 +67,92 @@ export default function Dashboard() {
     value !== null && value !== undefined && String(value).trim() !== ""
       ? value
       : "Not provided";
+
+  const handleProfileInputChange = (event) => {
+    const { name, value } = event.target;
+    setFormValues((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleStartEditing = () => {
+    setProfileSuccessMessage("");
+    setProfileErrorMessage("");
+    setIsEditingProfile(true);
+  };
+
+  const handleCancelEditing = () => {
+    if (profile) {
+      setFormValues({
+        email: profile.email || "",
+        first_name: profile.first_name || "",
+        last_name: profile.last_name || "",
+        programme: profile.programme || "",
+        year: profile.year ?? "",
+        faculty: profile.faculty || "",
+        school: profile.school || "",
+        grade_year: profile.grade_year ?? "",
+        age_group: profile.age_group || "",
+        city: profile.city || "",
+      });
+    }
+    setProfileSuccessMessage("");
+    setProfileErrorMessage("");
+    setIsEditingProfile(false);
+  };
+
+  const handleSaveProfile = async (event) => {
+    event.preventDefault();
+    if (!userId || !formValues) return;
+
+    setIsSavingProfile(true);
+    setProfileSuccessMessage("");
+    setProfileErrorMessage("");
+
+    const payload = {
+      first_name: formValues.first_name || null,
+      last_name: formValues.last_name || null,
+      programme: formValues.programme || null,
+      year:
+        formValues.year === "" || formValues.year === null
+          ? null
+          : Number.isNaN(Number(formValues.year))
+          ? null
+          : Number(formValues.year),
+      faculty: formValues.faculty || null,
+      school: formValues.school || null,
+      grade_year:
+        formValues.grade_year === "" || formValues.grade_year === null
+          ? null
+          : Number.isNaN(Number(formValues.grade_year))
+          ? null
+          : Number(formValues.grade_year),
+      age_group: formValues.age_group || null,
+      city: formValues.city || null,
+    };
+
+    try {
+      const updated = await apiFetch(`/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      setProfile(updated);
+      setProfileSuccessMessage("Profile updated successfully.");
+      setIsEditingProfile(false);
+    } catch (error) {
+      if (error.status === 401 || error.status === 403) {
+        setProfileErrorMessage("Please log in again.");
+        logout();
+        navigate("/login");
+        return;
+      }
+
+      setProfileErrorMessage(error.message || "Failed to update profile.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   return (
     <div style={container}>
@@ -72,41 +176,194 @@ export default function Dashboard() {
             </div>
           ) : !userId ? (
             <p style={mutedText}>No user is currently associated with this session.</p>
+          ) : profile && isEditingProfile && formValues ? (
+            <form onSubmit={handleSaveProfile}>
+              <dl style={detailsList}>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>First name</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="first_name"
+                      value={formValues.first_name}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Last name</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="last_name"
+                      value={formValues.last_name}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Email</dt>
+                  <dd style={detailsValue}>{profile.email}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Programme</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="programme"
+                      value={formValues.programme}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Year</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="number"
+                      name="year"
+                      value={formValues.year}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Faculty</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="faculty"
+                      value={formValues.faculty}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>School</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="school"
+                      value={formValues.school}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>City</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="city"
+                      value={formValues.city}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Age group</dt>
+                  <dd style={detailsValue}>
+                    <input
+                      type="text"
+                      name="age_group"
+                      value={formValues.age_group}
+                      onChange={handleProfileInputChange}
+                      style={input}
+                      disabled={isSavingProfile}
+                    />
+                  </dd>
+                </div>
+              </dl>
+              <div style={actionsRow}>
+                <button
+                  type="button"
+                  onClick={handleCancelEditing}
+                  style={secondaryButton}
+                  disabled={isSavingProfile}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    ...primaryButton,
+                    opacity: isSavingProfile ? 0.8 : 1,
+                    cursor: isSavingProfile ? "default" : "pointer",
+                  }}
+                  disabled={isSavingProfile}
+                >
+                  {isSavingProfile ? "Saving…" : "Save"}
+                </button>
+              </div>
+              {profileSuccessMessage ? (
+                <p style={successText}>{profileSuccessMessage}</p>
+              ) : null}
+              {profileErrorMessage ? (
+                <p style={errorText}>{profileErrorMessage}</p>
+              ) : null}
+            </form>
           ) : profile ? (
-            <dl style={detailsList}>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>Name</dt>
-                <dd style={detailsValue}>{displayName}</dd>
+            <>
+              <dl style={detailsList}>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Name</dt>
+                  <dd style={detailsValue}>{displayName}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Email</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.email)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Programme</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.programme)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Year</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.year)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Faculty</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.faculty)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>School</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.school)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>City</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.city)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Age group</dt>
+                  <dd style={detailsValue}>{fieldOrFallback(profile.age_group)}</dd>
+                </div>
+              </dl>
+              <div style={actionsRow}>
+                <button type="button" style={primaryButton} onClick={handleStartEditing}>
+                  Edit profile
+                </button>
               </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>Email</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.email)}</dd>
-              </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>Programme</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.programme)}</dd>
-              </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>Year</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.year)}</dd>
-              </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>Faculty</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.faculty)}</dd>
-              </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>School</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.school)}</dd>
-              </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>City</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.city)}</dd>
-              </div>
-              <div style={detailsRow}>
-                <dt style={detailsLabel}>Age group</dt>
-                <dd style={detailsValue}>{fieldOrFallback(profile.age_group)}</dd>
-              </div>
-            </dl>
+              {profileSuccessMessage ? (
+                <p style={successText}>{profileSuccessMessage}</p>
+              ) : null}
+              {profileErrorMessage ? (
+                <p style={errorText}>{profileErrorMessage}</p>
+              ) : null}
+            </>
           ) : (
             <p style={mutedText}>We could not load your profile details.</p>
           )}
@@ -215,6 +472,12 @@ const errorText = {
   color: "#dc2626",
 };
 
+const successText = {
+  margin: 0,
+  marginTop: "8px",
+  color: "#16a34a",
+};
+
 const subheading = {
   margin: 0,
   marginBottom: "8px",
@@ -266,6 +529,43 @@ const detailsLabel = {
 const detailsValue = {
   fontSize: "14px",
   color: "black",
+};
+
+const input = {
+  width: "100%",
+  padding: "6px 8px",
+  borderRadius: "6px",
+  border: "1px solid #d1d5db",
+  fontSize: "14px",
+  color: "black",
+  boxSizing: "border-box",
+};
+
+const actionsRow = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "8px",
+  marginTop: "12px",
+};
+
+const primaryButton = {
+  borderRadius: "999px",
+  border: "none",
+  padding: "8px 16px",
+  background: "#111827",
+  color: "white",
+  fontSize: "14px",
+  fontWeight: 500,
+};
+
+const secondaryButton = {
+  borderRadius: "999px",
+  border: "1px solid #d1d5db",
+  padding: "8px 16px",
+  background: "white",
+  color: "black",
+  fontSize: "14px",
+  fontWeight: 500,
 };
 
 const skeletonStack = {
