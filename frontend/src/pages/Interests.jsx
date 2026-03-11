@@ -1,23 +1,43 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
 
 export default function Interests() {
+  const navigate = useNavigate();
+  const { userId, logout } = useAuth();
   const [categories, setCategories] = useState([]);
   const [interests, setInterests] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState("");
+  const [saveErrorMessage, setSaveErrorMessage] = useState("");
 
   const loadData = async () => {
     setIsLoading(true);
     setError("");
+    setSaveSuccessMessage("");
+    setSaveErrorMessage("");
     try {
-      const [cats, ints] = await Promise.all([
+      const requests = [
         apiFetch("/interest-categories"),
         apiFetch("/interests"),
-      ]);
+      ];
+
+      if (userId) {
+        requests.push(apiFetch(`/users/${userId}/interests`));
+      }
+
+      const [cats, ints, userInts] = await Promise.all(requests);
+
       setCategories(Array.isArray(cats) ? cats : []);
       setInterests(Array.isArray(ints) ? ints : []);
+
+      if (userId && Array.isArray(userInts)) {
+        setSelectedIds(new Set(userInts.map((i) => i.id)));
+      }
     } catch (e) {
       setError(e.message || "Failed to load interests.");
     } finally {
@@ -29,13 +49,21 @@ export default function Interests() {
     let ignore = false;
     const run = async () => {
       try {
-        const [cats, ints] = await Promise.all([
+        const requests = [
           apiFetch("/interest-categories"),
           apiFetch("/interests"),
-        ]);
+        ];
+        if (userId) {
+          requests.push(apiFetch(`/users/${userId}/interests`));
+        }
+
+        const [cats, ints, userInts] = await Promise.all(requests);
         if (ignore) return;
         setCategories(Array.isArray(cats) ? cats : []);
         setInterests(Array.isArray(ints) ? ints : []);
+        if (userId && Array.isArray(userInts)) {
+          setSelectedIds(new Set(userInts.map((i) => i.id)));
+        }
       } catch (e) {
         if (!ignore) setError(e.message || "Failed to load interests.");
       } finally {
@@ -46,9 +74,11 @@ export default function Interests() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [userId]);
 
   const handleToggleInterest = (id) => {
+    setSaveSuccessMessage("");
+    setSaveErrorMessage("");
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -58,6 +88,40 @@ export default function Interests() {
       }
       return next;
     });
+  };
+
+  const handleSave = async () => {
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveSuccessMessage("");
+    setSaveErrorMessage("");
+
+    const payload = {
+      interest_ids: Array.from(selectedIds),
+    };
+
+    try {
+      await apiFetch(`/users/${userId}/interests`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setSaveSuccessMessage("Interests saved successfully.");
+    } catch (e) {
+      if (e.status === 401 || e.status === 403) {
+        setSaveErrorMessage("Please log in again.");
+        logout();
+        navigate("/login");
+        return;
+      }
+
+      setSaveErrorMessage(e.message || "Failed to save interests.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const anySelected = selectedIds.size > 0;
@@ -71,15 +135,35 @@ export default function Interests() {
             Choose the activities and topics that match your preferences.
           </p>
         </div>
-        {anySelected ? (
-          <div style={pill}>
-            <span style={pillDot} />
-            <span style={pillText}>
-              {selectedIds.size} interest
-              {selectedIds.size === 1 ? "" : "s"} selected
-            </span>
-          </div>
-        ) : null}
+        <div style={headerActions}>
+          {anySelected ? (
+            <div style={pill}>
+              <span style={pillDot} />
+              <span style={pillText}>
+                {selectedIds.size} interest
+                {selectedIds.size === 1 ? "" : "s"} selected
+              </span>
+            </div>
+          ) : null}
+          {saveSuccessMessage ? (
+            <p style={successText}>{saveSuccessMessage}</p>
+          ) : null}
+          {saveErrorMessage ? (
+            <p style={errorText}>{saveErrorMessage}</p>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleSave}
+            style={{
+              ...primaryButton,
+              opacity: isSaving ? 0.8 : 1,
+              cursor: isSaving ? "default" : "pointer",
+            }}
+            disabled={isSaving || !userId}
+          >
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
       </header>
 
       <section style={card}>
@@ -304,6 +388,12 @@ const errorText = {
   fontSize: "14px",
 };
 
+const successText = {
+  margin: "0 0 12px 0",
+  color: "#16a34a",
+  fontSize: "14px",
+};
+
 const primaryButton = {
   borderRadius: "999px",
   border: "none",
@@ -313,6 +403,14 @@ const primaryButton = {
   fontSize: "14px",
   fontWeight: 500,
   cursor: "pointer",
+};
+
+const headerActions = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
 };
 
 const skeletonStack = {
