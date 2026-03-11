@@ -1,5 +1,6 @@
 import hashlib
 import os
+import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,9 +119,8 @@ class InterestOut(BaseModel):
     description: str | None = None
 
 
-class UserInterestAssign(BaseModel):
-    interest_id: str
-    level: str | None = None
+class UserInterestsUpdate(BaseModel):
+    interest_ids: list[str]
 
 
 def get_db() -> Session:
@@ -323,46 +323,66 @@ def list_interests(category_id: str | None = None, db: Session = Depends(get_db)
 
 
 @app.post("/users/{user_id}/interests")
-def assign_interest_to_user(
+def set_user_interests(
     user_id: str,
-    payload: UserInterestAssign,
+    payload: UserInterestsUpdate,
     db: Session = Depends(get_db),
 ):
     # ensure user exists
-    user = db.query(models.User).filter(models.User.id == user_id).first()
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format.",
+        )
+
+    user = db.query(models.User).filter(models.User.id == user_uuid).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
 
-    # ensure interest exists
-    interest = (
-        db.query(models.Interest)
-        .filter(models.Interest.id == payload.interest_id)
-        .first()
-    )
-    if not interest:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
+    # when the list is empty, clear all interests for the user
+    raw_interest_ids = payload.interest_ids or []
 
-    # upsert user_interest (no duplicates due to PK)
-    link = (
+    try:
+        interest_uuids = [uuid.UUID(value) for value in raw_interest_ids]
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid interest ID format.",
+        )
+
+    if interest_uuids:
+        # ensure all requested interests exist
+        rows = (
+            db.query(models.Interest.id)
+            .filter(models.Interest.id.in_(interest_uuids))
+            .all()
+        )
+        found_ids = {row.id for row in rows}
+        missing = set(interest_uuids) - found_ids
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="One or more interests were not found.",
+            )
+
+    # replace the user's interests in a single transaction
+    (
         db.query(models.UserInterest)
-        .filter(
-            models.UserInterest.user_id == user_id,
-            models.UserInterest.interest_id == payload.interest_id,
-        )
-        .first()
+        .filter(models.UserInterest.user_id == user_uuid)
+        .delete()
     )
-    if link is None:
-        link = models.UserInterest(
-            user_id=user_id,
-            interest_id=payload.interest_id,
-            level=payload.level,
-        )
+
+    for interest_id in interest_uuids:
+        link = models.UserInterest(user_id=user_uuid, interest_id=interest_id)
         db.add(link)
-    else:
-        link.level = payload.level
 
     db.commit()
-    return {"message": "Interest assigned to user."}
+    return {"message": "Interests updated."}
 
 
 @app.get("/users/{user_id}/interests", response_model=list[InterestOut])
