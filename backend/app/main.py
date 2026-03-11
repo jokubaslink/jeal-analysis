@@ -79,6 +79,21 @@ class UserLogin(BaseModel):
     password: str
 
 
+class UserOut(BaseModel):
+    id: str
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    name: str | None = None
+    programme: str | None = None
+    year: int | None = None
+    faculty: str | None = None
+    school: str | None = None
+    grade_year: int | None = None
+    age_group: str | None = None
+    city: str | None = None
+
+
 class InterestCategoryOut(BaseModel):
     id: str
     name: str
@@ -184,6 +199,31 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         )
 
     return {"message": "Login successful", "user_id": str(user.id)}
+
+
+@app.get("/users/{user_id}", response_model=UserOut)
+def get_user(user_id: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return UserOut(
+        id=str(user.id),
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        name=user.name,
+        programme=user.programme,
+        year=user.year,
+        faculty=user.faculty,
+        school=user.school,
+        grade_year=user.grade_year,
+        age_group=user.age_group,
+        city=user.city,
+    )
 
 
 @app.get("/users")
