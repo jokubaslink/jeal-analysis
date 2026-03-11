@@ -42,7 +42,10 @@ export async function apiFetch(path, options = {}) {
       const d = payload.detail;
       message = Array.isArray(d) ? d.map((x) => x.msg || JSON.stringify(x)).join("; ") : String(d);
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
 
   return payload;

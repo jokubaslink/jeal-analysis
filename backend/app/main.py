@@ -84,7 +84,18 @@ class UserOut(BaseModel):
     email: str
     first_name: str | None = None
     last_name: str | None = None
-    name: str | None = None
+    programme: str | None = None
+    year: int | None = None
+    faculty: str | None = None
+    school: str | None = None
+    grade_year: int | None = None
+    age_group: str | None = None
+    city: str | None = None
+
+
+class UserUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
     programme: str | None = None
     year: int | None = None
     faculty: str | None = None
@@ -215,7 +226,57 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
         email=user.email,
         first_name=user.first_name,
         last_name=user.last_name,
-        name=user.name,
+        programme=user.programme,
+        year=user.year,
+        faculty=user.faculty,
+        school=user.school,
+        grade_year=user.grade_year,
+        age_group=user.age_group,
+        city=user.city,
+    )
+
+
+@app.patch("/users/{user_id}", response_model=UserOut)
+def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    data = payload.model_dump(exclude_unset=True)
+    allowed_fields = {
+        "first_name",
+        "last_name",
+        "programme",
+        "year",
+        "faculty",
+        "school",
+        "grade_year",
+        "age_group",
+        "city",
+    }
+
+    for field, value in data.items():
+        if field in allowed_fields:
+            setattr(user, field, value)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Update failed. Email may already be in use.",
+        )
+
+    db.refresh(user)
+    return UserOut(
+        id=str(user.id),
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
         programme=user.programme,
         year=user.year,
         faculty=user.faculty,
