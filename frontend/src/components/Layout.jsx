@@ -38,6 +38,7 @@ export default function Layout() {
             {isAuthed && (
               <>
                 <NavLink to="/dashboard" style={linkStyle}>Dashboard</NavLink>
+                <NavLink to="/interests" style={linkStyle}>Interests</NavLink>
                 <button type="button" onClick={handleLogout} style={styles.logoutButton}>
                   Logout
                 </button>
