@@ -941,8 +941,13 @@ def update_user_interests(
             detail="User not found",
         )
 
-    # when the list is empty, clear all interests for the user
     items = payload.items or []
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one interest is required.",
+        )
+
     raw_interest_ids = [item.interest_id for item in items]
 
     try:

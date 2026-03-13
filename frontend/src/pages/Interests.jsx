@@ -14,6 +14,7 @@ export default function Interests() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState("");
   const [saveErrorMessage, setSaveErrorMessage] = useState("");
+  const validationMessage = "Please select at least one interest.";
 
   const loadData = async () => {
     setIsLoading(true);
@@ -97,6 +98,7 @@ export default function Interests() {
       navigate("/login");
       return;
     }
+    if (selectedIds.size === 0) return;
 
     setIsSaving(true);
     setSaveSuccessMessage("");
@@ -115,7 +117,7 @@ export default function Interests() {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      setSaveSuccessMessage("Interests saved successfully.");
+      setSaveSuccessMessage("Your interests have been saved successfully.");
     } catch (e) {
       if (e.status === 401 || e.status === 403) {
         setSaveErrorMessage("Please log in again.");
@@ -124,7 +126,9 @@ export default function Interests() {
         return;
       }
 
-      setSaveErrorMessage(e.message || "Failed to save interests.");
+      setSaveErrorMessage(
+        e.detail ?? e.message ?? "Failed to save interests."
+      );
     } finally {
       setIsSaving(false);
     }
@@ -157,15 +161,18 @@ export default function Interests() {
           {saveErrorMessage ? (
             <p style={errorText}>{saveErrorMessage}</p>
           ) : null}
+          {!anySelected ? (
+            <p style={validationText}>{validationMessage}</p>
+          ) : null}
           <button
             type="button"
             onClick={handleSave}
             style={{
               ...primaryButton,
-              opacity: isSaving ? 0.8 : 1,
-              cursor: isSaving ? "default" : "pointer",
+              opacity: isSaving || !anySelected ? 0.8 : 1,
+              cursor: isSaving || !anySelected ? "default" : "pointer",
             }}
-            disabled={isSaving || !userId}
+            disabled={isSaving || !userId || !anySelected}
           >
             {isSaving ? "Saving…" : "Save"}
           </button>
@@ -391,6 +398,12 @@ const mutedText = {
 const errorText = {
   margin: "0 0 12px 0",
   color: "#dc2626",
+  fontSize: "14px",
+};
+
+const validationText = {
+  margin: "0 0 12px 0",
+  color: "#b45309",
   fontSize: "14px",
 };
 
