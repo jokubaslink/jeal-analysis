@@ -36,7 +36,8 @@ export default function Interests() {
       setInterests(Array.isArray(ints) ? ints : []);
 
       if (userId && Array.isArray(userInts)) {
-        setSelectedIds(new Set(userInts.map((i) => i.id)));
+        // backend returns objects with `interest_id`
+        setSelectedIds(new Set(userInts.map((i) => i.interest_id)));
       }
     } catch (e) {
       setError(e.message || "Failed to load interests.");
@@ -62,7 +63,8 @@ export default function Interests() {
         setCategories(Array.isArray(cats) ? cats : []);
         setInterests(Array.isArray(ints) ? ints : []);
         if (userId && Array.isArray(userInts)) {
-          setSelectedIds(new Set(userInts.map((i) => i.id)));
+          // backend returns objects with `interest_id`
+          setSelectedIds(new Set(userInts.map((i) => i.interest_id)));
         }
       } catch (e) {
         if (!ignore) setError(e.message || "Failed to load interests.");
@@ -101,12 +103,16 @@ export default function Interests() {
     setSaveErrorMessage("");
 
     const payload = {
-      interest_ids: Array.from(selectedIds),
+      // backend expects `items: [{ interest_id, level }]`
+      items: Array.from(selectedIds).map((id) => ({
+        interest_id: id,
+        level: null,
+      })),
     };
 
     try {
       await apiFetch(`/users/${userId}/interests`, {
-        method: "POST",
+        method: "PUT",
         body: JSON.stringify(payload),
       });
       setSaveSuccessMessage("Interests saved successfully.");

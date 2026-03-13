@@ -55,6 +55,8 @@ class InterestCategory(Base):
     description = Column(String(500), nullable=True)
 
     interests = relationship("Interest", back_populates="category", cascade="all, delete-orphan")
+    clubs = relationship("Club", back_populates="category", cascade="all, delete-orphan")
+    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
 
     created_at = Column(
         DateTime(timezone=True),
@@ -111,4 +113,75 @@ class UserInterest(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+
+class Club(Base):
+    __tablename__ = "clubs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(String(1000), nullable=True)
+    category_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("interest_categories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    city = Column(String(100), nullable=True)
+    location = Column(String(255), nullable=True)
+    website_url = Column(String(500), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+
+    category = relationship("InterestCategory", back_populates="clubs")
+    events = relationship("Event", back_populates="club", cascade="all, delete-orphan")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(255), nullable=False)
+    description = Column(String(2000), nullable=True)
+    category_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("interest_categories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    club_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clubs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    start_time = Column(DateTime(timezone=True), nullable=False)
+    end_time = Column(DateTime(timezone=True), nullable=True)
+    city = Column(String(100), nullable=True)
+    location = Column(String(255), nullable=True)
+    is_online = Column(Boolean, nullable=False, server_default="false")
+    registration_url = Column(String(500), nullable=True)
+
+    category = relationship("InterestCategory", back_populates="events")
+    club = relationship("Club", back_populates="events")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
