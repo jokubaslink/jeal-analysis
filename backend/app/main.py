@@ -21,7 +21,7 @@ def handle_db_error(_request: Request, exc: OperationalError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
-            "detail": "Database connection failed. Check that PostgreSQL is running and DATABASE_URL is set (e.g. port 5433 if you use a different port).",
+            "detail": "Database connection failed. Check that PostgreSQL is running and DATABASE_URL is set (e.g. port 5432 if you use a different port).",
         },
     )
 
