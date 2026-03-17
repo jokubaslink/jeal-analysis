@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -210,6 +211,14 @@ class UserInterestsUpdate(BaseModel):
     items: list[UserInterestItem]
 
 
+class SimilarUserOut(BaseModel):
+    user_id: str
+    score: float
+    faculty: str | None = None
+    programme: str | None = None
+    shared_interest_count: int
+
+
 def get_db() -> Session:
     db = SessionLocal()
     try:
@@ -377,6 +386,92 @@ def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db)
 @app.get("/users")
 def list_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
+
+
+# Boost weights for similar-users ranking (same faculty / programme)
+FACULTY_BOOST = 1.0
+PROGRAMME_BOOST = 1.0
+
+
+@app.get("/users/{user_id}/similar-users", response_model=list[SimilarUserOut])
+def get_similar_users(user_id: str, db: Session = Depends(get_db)):
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format.",
+        )
+
+    current_user = db.query(models.User).filter(models.User.id == user_uuid).first()
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    current_interest_ids = [
+        row.interest_id
+        for row in db.query(models.UserInterest.interest_id).filter(
+            models.UserInterest.user_id == user_uuid
+        ).all()
+    ]
+    if not current_interest_ids:
+        return []
+
+    # Other users who share at least one interest (exclude current user), with shared count
+    shared_counts = (
+        db.query(
+            models.UserInterest.user_id,
+            func.count(models.UserInterest.interest_id).label("shared"),
+        )
+        .filter(
+            models.UserInterest.interest_id.in_(current_interest_ids),
+            models.UserInterest.user_id != user_uuid,
+        )
+        .group_by(models.UserInterest.user_id)
+        .all()
+    )
+
+    if not shared_counts:
+        return []
+
+    other_user_ids = [row.user_id for row in shared_counts]
+    count_by_id = {row.user_id: row.shared for row in shared_counts}
+
+    other_users = (
+        db.query(models.User)
+        .filter(models.User.id.in_(other_user_ids))
+        .all()
+    )
+    user_by_id = {u.id: u for u in other_users}
+
+    current_faculty = current_user.faculty
+    current_programme = current_user.programme
+
+    results = []
+    for uid in other_user_ids:
+        u = user_by_id.get(uid)
+        if not u:
+            continue
+        shared = count_by_id[uid]
+        score = float(shared)
+        if current_faculty and u.faculty and current_faculty.strip() == u.faculty.strip():
+            score += FACULTY_BOOST
+        if current_programme and u.programme and current_programme.strip() == u.programme.strip():
+            score += PROGRAMME_BOOST
+        results.append(
+            SimilarUserOut(
+                user_id=str(u.id),
+                score=round(score, 2),
+                faculty=u.faculty,
+                programme=u.programme,
+                shared_interest_count=shared,
+            )
+        )
+
+    results.sort(key=lambda x: x.score, reverse=True)
+    return results
 
 
 @app.get("/interest-categories", response_model=list[InterestCategoryOut])
