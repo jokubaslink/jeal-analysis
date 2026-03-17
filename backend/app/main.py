@@ -2,7 +2,7 @@ import hashlib
 import os
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
@@ -152,6 +152,19 @@ class ClubOut(BaseModel):
     is_active: bool
 
 
+class RecommendedClubOut(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    category_id: str | None = None
+    category_name: str | None = None
+    city: str | None = None
+    location: str | None = None
+    website_url: str | None = None
+    is_active: bool
+    score: int
+
+
 class EventCreate(BaseModel):
     title: str
     description: str | None = None
@@ -194,6 +207,23 @@ class EventOut(BaseModel):
     registration_url: str | None = None
 
 
+class RecommendedEventOut(BaseModel):
+    id: str
+    title: str
+    description: str | None = None
+    category_id: str | None = None
+    category_name: str | None = None
+    club_id: str | None = None
+    club_name: str | None = None
+    start_time: str
+    end_time: str | None = None
+    city: str | None = None
+    location: str | None = None
+    is_online: bool
+    registration_url: str | None = None
+    score: int
+
+
 class UserInterestItem(BaseModel):
     interest_id: str
     level: str | None = None
@@ -225,6 +255,39 @@ def get_db() -> Session:
         yield db
     finally:
         db.close()
+
+
+def get_current_user(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> models.User:
+    """
+    Lightweight auth for this project:
+    Frontend sends `Authorization: Bearer <user_id>` where `<user_id>` is a UUID.
+    """
+    if not authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated.")
+
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header.",
+        )
+
+    token = parts[1].strip()
+    try:
+        user_uuid = uuid.UUID(token)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token.",
+        )
+
+    user = db.query(models.User).filter(models.User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+    return user
 
 
 @app.get("/health")
@@ -391,6 +454,18 @@ def list_users(db: Session = Depends(get_db)):
 # Boost weights for similar-users ranking (same faculty / programme), applied on top of cosine and capped at 1.0
 FACULTY_BOOST = 0.1
 PROGRAMME_BOOST = 0.1
+DEFAULT_SIMILAR_USERS_LIMIT = 10
+MAX_SIMILAR_USERS_LIMIT = 50
+DEFAULT_RECOMMENDED_CLUBS_LIMIT = 10
+MAX_RECOMMENDED_CLUBS_LIMIT = 50
+DEFAULT_RECOMMENDED_EVENTS_LIMIT = 10
+MAX_RECOMMENDED_EVENTS_LIMIT = 50
+
+
+class SimilarUserPublicOut(BaseModel):
+    name: str | None = None
+    programme: str | None = None
+    faculty: str | None = None
 
 
 def _build_interest_vector(interest_ids: set, ordered_interest_ids: list) -> list[int]:
@@ -491,6 +566,96 @@ def get_similar_users(user_id: str, db: Session = Depends(get_db)):
     return results
 
 
+@app.get("/users/similar", response_model=list[SimilarUserPublicOut])
+def get_similar_users_for_current_user(
+    limit: int | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns similar users for the logged-in user.
+    Privacy-safe fields only: name, programme, faculty.
+    """
+    if limit is None:
+        limit_value = DEFAULT_SIMILAR_USERS_LIMIT
+    else:
+        if limit <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="limit must be a positive integer.",
+            )
+        limit_value = min(limit, MAX_SIMILAR_USERS_LIMIT)
+
+    user_uuid = current_user.id
+
+    # Canonical ordering of all interests (for consistent vectors)
+    ordered_interest_ids = [
+        row.id for row in db.query(models.Interest.id).order_by(models.Interest.id).all()
+    ]
+    if not ordered_interest_ids:
+        return []
+
+    current_interest_ids = {
+        row.interest_id
+        for row in db.query(models.UserInterest.interest_id).filter(
+            models.UserInterest.user_id == user_uuid
+        ).all()
+    }
+    current_vector = _build_interest_vector(current_interest_ids, ordered_interest_ids)
+    if sum(current_vector) == 0:
+        return []
+
+    # All other users' interest sets (exclude current user)
+    all_other_links = (
+        db.query(models.UserInterest.user_id, models.UserInterest.interest_id)
+        .filter(models.UserInterest.user_id != user_uuid)
+        .all()
+    )
+    user_interest_sets: dict = {}
+    for uid, iid in all_other_links:
+        user_interest_sets.setdefault(uid, set()).add(iid)
+
+    # All other users (exclude current); include users with no interests (cosine = 0)
+    all_other_users = db.query(models.User).filter(models.User.id != user_uuid).all()
+    user_by_id = {u.id: u for u in all_other_users}
+
+    current_faculty = current_user.faculty
+    current_programme = current_user.programme
+
+    scored: list[tuple[float, models.User]] = []
+    for uid, u in user_by_id.items():
+        other_interest_ids = user_interest_sets.get(uid, set())
+        other_vector = _build_interest_vector(other_interest_ids, ordered_interest_ids)
+        cosine = _cosine_similarity(current_vector, other_vector)
+        score = cosine
+        if current_faculty and u.faculty and current_faculty.strip() == u.faculty.strip():
+            score += FACULTY_BOOST
+        if current_programme and u.programme and current_programme.strip() == u.programme.strip():
+            score += PROGRAMME_BOOST
+        score = min(1.0, score)
+        scored.append((score, u))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:limit_value]
+
+    def _display_name(user: models.User) -> str | None:
+        if user.name and user.name.strip():
+            return user.name.strip()
+        parts = [p.strip() for p in [user.first_name or "", user.last_name or ""] if p.strip()]
+        if parts:
+            return " ".join(parts)
+        return None
+
+    return [
+        SimilarUserPublicOut(
+            name=_display_name(u),
+            programme=u.programme,
+            faculty=u.faculty,
+        )
+        for _score, u in top
+    ]
+
+
 @app.get("/interest-categories", response_model=list[InterestCategoryOut])
 def list_interest_categories(db: Session = Depends(get_db)):
     categories = db.query(models.InterestCategory).order_by(models.InterestCategory.name).all()
@@ -589,6 +754,85 @@ def list_clubs(category_id: str | None = None, city: str | None = None, db: Sess
             is_active=c.is_active,
         )
         for c in clubs
+    ]
+
+
+@app.get("/clubs/recommended", response_model=list[RecommendedClubOut])
+def list_recommended_clubs(
+    limit: int | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Recommend clubs to the logged-in user based on interest category overlap.
+    Score increases when a club's category matches user interests; multiple
+    interests in the same category increase the score further.
+    """
+    if limit is None:
+        limit_value = DEFAULT_RECOMMENDED_CLUBS_LIMIT
+    else:
+        if limit <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="limit must be a positive integer.",
+            )
+        limit_value = min(limit, MAX_RECOMMENDED_CLUBS_LIMIT)
+
+    user_uuid = current_user.id
+
+    # Count how many interests the user has in each category
+    rows = (
+        db.query(models.Interest.category_id, func.count(models.Interest.id))
+        .join(models.UserInterest, models.UserInterest.interest_id == models.Interest.id)
+        .filter(models.UserInterest.user_id == user_uuid)
+        .group_by(models.Interest.category_id)
+        .all()
+    )
+    # category_id -> interest count
+    category_interest_counts: dict = {row[0]: int(row[1]) for row in rows if row[0] is not None}
+
+    if not category_interest_counts:
+        return []
+
+    # Score clubs: score = number of interests user has in that club's category
+    clubs = (
+        db.query(models.Club)
+        .join(
+            models.InterestCategory,
+            models.Club.category_id == models.InterestCategory.id,
+            isouter=True,
+        )
+        .all()
+    )
+
+    scored: list[tuple[int, models.Club]] = []
+    for club in clubs:
+        score = category_interest_counts.get(club.category_id, 0)
+        if score <= 0:
+            continue
+        scored.append((score, club))
+
+    if not scored:
+        return []
+
+    # Sort by score desc, then name asc for stability
+    scored.sort(key=lambda x: (-x[0], (x[1].name or "").lower()))
+    top = scored[:limit_value]
+
+    return [
+        RecommendedClubOut(
+            id=str(c.id),
+            name=c.name,
+            description=c.description,
+            category_id=str(c.category_id) if c.category_id else None,
+            category_name=c.category.name if c.category else None,
+            city=c.city,
+            location=c.location,
+            website_url=c.website_url,
+            is_active=c.is_active,
+            score=score,
+        )
+        for score, c in top
     ]
 
 
@@ -854,6 +1098,94 @@ def list_events(
             registration_url=e.registration_url,
         )
         for e in events
+    ]
+
+
+@app.get("/events/recommended", response_model=list[RecommendedEventOut])
+def list_recommended_events(
+    limit: int | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Recommend upcoming events to the logged-in user based on interest category overlap.
+    Only events with start_time > now are considered.
+    """
+    if limit is None:
+        limit_value = DEFAULT_RECOMMENDED_EVENTS_LIMIT
+    else:
+        if limit <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="limit must be a positive integer.",
+            )
+        limit_value = min(limit, MAX_RECOMMENDED_EVENTS_LIMIT)
+
+    user_uuid = current_user.id
+
+    # Count how many interests the user has in each category
+    rows = (
+        db.query(models.Interest.category_id, func.count(models.Interest.id))
+        .join(models.UserInterest, models.UserInterest.interest_id == models.Interest.id)
+        .filter(models.UserInterest.user_id == user_uuid)
+        .group_by(models.Interest.category_id)
+        .all()
+    )
+    category_interest_counts: dict = {row[0]: int(row[1]) for row in rows if row[0] is not None}
+
+    if not category_interest_counts:
+        return []
+
+    # Only upcoming events
+    now = func.now()
+    events = (
+        db.query(models.Event)
+        .join(
+            models.InterestCategory,
+            models.Event.category_id == models.InterestCategory.id,
+            isouter=True,
+        )
+        .join(
+            models.Club,
+            models.Event.club_id == models.Club.id,
+            isouter=True,
+        )
+        .filter(models.Event.start_time > now)
+        .all()
+    )
+
+    scored: list[tuple[int, models.Event]] = []
+    for event in events:
+        score = category_interest_counts.get(event.category_id, 0)
+        if score <= 0:
+            continue
+        scored.append((score, event))
+
+    if not scored:
+        return []
+
+    # Sort by score desc, then start_time asc for timeliness
+    scored.sort(key=lambda x: (-x[0], x[1].start_time))
+    top = scored[:limit_value]
+
+    return [
+        RecommendedEventOut(
+            id=str(e.id),
+            title=e.title,
+            description=e.description,
+            category_id=str(e.category_id) if e.category_id else None,
+            category_name=e.category.name if e.category else None,
+            club_id=str(e.club_id) if e.club_id else None,
+            club_name=e.club.name if e.club else None,
+            start_time=e.start_time.isoformat(),
+            end_time=e.end_time.isoformat() if e.end_time else None,
+            city=e.city,
+            location=e.location,
+            is_online=e.is_online,
+            registration_url=e.registration_url,
+            score=score,
+        )
+        for score, e in top
     ]
 
 
