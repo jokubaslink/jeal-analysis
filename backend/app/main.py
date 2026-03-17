@@ -388,9 +388,24 @@ def list_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
 
 
-# Boost weights for similar-users ranking (same faculty / programme)
-FACULTY_BOOST = 1.0
-PROGRAMME_BOOST = 1.0
+# Boost weights for similar-users ranking (same faculty / programme), applied on top of cosine and capped at 1.0
+FACULTY_BOOST = 0.1
+PROGRAMME_BOOST = 0.1
+
+
+def _build_interest_vector(interest_ids: set, ordered_interest_ids: list) -> list[int]:
+    """Build binary vector: 1 if user has that interest, 0 otherwise."""
+    return [1 if iid in interest_ids else 0 for iid in ordered_interest_ids]
+
+
+def _cosine_similarity(a: list[int], b: list[int]) -> float:
+    """Cosine similarity between two vectors. Returns value in [0, 1]."""
+    dot = sum(ai * bi for ai, bi in zip(a, b))
+    norm_a = sum(a) ** 0.5
+    norm_b = sum(b) ** 0.5
+    if norm_a * norm_b <= 0:
+        return 0.0
+    return min(1.0, max(0.0, dot / (norm_a * norm_b)))
 
 
 @app.get("/users/{user_id}/similar-users", response_model=list[SimilarUserOut])
@@ -410,41 +425,39 @@ def get_similar_users(user_id: str, db: Session = Depends(get_db)):
             detail="User not found",
         )
 
-    current_interest_ids = [
+    # Canonical ordering of all interests (for consistent vectors)
+    ordered_interest_ids = [
+        row.id for row in db.query(models.Interest.id).order_by(models.Interest.id).all()
+    ]
+    if not ordered_interest_ids:
+        return []
+
+    current_interest_ids = {
         row.interest_id
         for row in db.query(models.UserInterest.interest_id).filter(
             models.UserInterest.user_id == user_uuid
         ).all()
-    ]
-    if not current_interest_ids:
+    }
+    current_vector = _build_interest_vector(current_interest_ids, ordered_interest_ids)
+    if sum(current_vector) == 0:
         return []
 
-    # Other users who share at least one interest (exclude current user), with shared count
-    shared_counts = (
-        db.query(
-            models.UserInterest.user_id,
-            func.count(models.UserInterest.interest_id).label("shared"),
-        )
-        .filter(
-            models.UserInterest.interest_id.in_(current_interest_ids),
-            models.UserInterest.user_id != user_uuid,
-        )
-        .group_by(models.UserInterest.user_id)
+    # All other users' interest sets (exclude current user)
+    all_other_links = (
+        db.query(models.UserInterest.user_id, models.UserInterest.interest_id)
+        .filter(models.UserInterest.user_id != user_uuid)
         .all()
     )
+    user_interest_sets: dict = {}
+    for uid, iid in all_other_links:
+        user_interest_sets.setdefault(uid, set()).add(iid)
 
-    if not shared_counts:
-        return []
-
-    other_user_ids = [row.user_id for row in shared_counts]
-    count_by_id = {row.user_id: row.shared for row in shared_counts}
-
-    other_users = (
-        db.query(models.User)
-        .filter(models.User.id.in_(other_user_ids))
-        .all()
+    # All other users (exclude current); include users with no interests (cosine = 0)
+    all_other_users = (
+        db.query(models.User).filter(models.User.id != user_uuid).all()
     )
-    user_by_id = {u.id: u for u in other_users}
+    other_user_ids = [u.id for u in all_other_users]
+    user_by_id = {u.id: u for u in all_other_users}
 
     current_faculty = current_user.faculty
     current_programme = current_user.programme
@@ -454,16 +467,20 @@ def get_similar_users(user_id: str, db: Session = Depends(get_db)):
         u = user_by_id.get(uid)
         if not u:
             continue
-        shared = count_by_id[uid]
-        score = float(shared)
+        other_interest_ids = user_interest_sets.get(uid, set())
+        other_vector = _build_interest_vector(other_interest_ids, ordered_interest_ids)
+        cosine = _cosine_similarity(current_vector, other_vector)
+        score = cosine
         if current_faculty and u.faculty and current_faculty.strip() == u.faculty.strip():
             score += FACULTY_BOOST
         if current_programme and u.programme and current_programme.strip() == u.programme.strip():
             score += PROGRAMME_BOOST
+        score = min(1.0, score)
+        shared = sum(1 for a, b in zip(current_vector, other_vector) if a == b == 1)
         results.append(
             SimilarUserOut(
                 user_id=str(u.id),
-                score=round(score, 2),
+                score=round(score, 4),
                 faculty=u.faculty,
                 programme=u.programme,
                 shared_interest_count=shared,
