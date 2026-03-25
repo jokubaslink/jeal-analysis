@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 
 export default function Register() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from || "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,7 +52,10 @@ export default function Register() {
         }),
       });
       setSuccessMessage("Registration successful. Redirecting to login...");
-      setTimeout(() => navigate("/login", { replace: true }), 1200);
+      setTimeout(
+        () => navigate("/login", { replace: true, state: { from } }),
+        1200
+      );
     } catch (error) {
       setErrorMessage(error.message);
     } finally {

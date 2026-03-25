@@ -1,11 +1,7 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,11 +11,8 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: inherit;
   text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
 }
 
 html, body, #root {
@@ -31,8 +24,10 @@ html, body, #root {
 
 body {
   color: black;
-  background: #f3f4f6;
-  font-family: system-ui, sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(190, 242, 100, 0.22), transparent 24%),
+    linear-gradient(180deg, #f4f7f1 0%, #eef2e7 100%);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 h1 {
@@ -47,27 +42,30 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: border-color 0.25s, transform 0.15s ease;
 }
 button:hover {
-  border-color: #646cff;
+  transform: translateY(-1px);
 }
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+@keyframes jeal-skeleton-pulse {
+  0% {
+    background-position: 100% 50%;
   }
-  a:hover {
-    color: #747bff;
+  100% {
+    background-position: 0 50%;
   }
-  button {
-    background-color: #f9f9f9;
+}
+
+@media (max-width: 768px) {
+  body {
+    background:
+      radial-gradient(circle at top, rgba(190, 242, 100, 0.18), transparent 22%),
+      linear-gradient(180deg, #f4f7f1 0%, #eef2e7 100%);
   }
 }
