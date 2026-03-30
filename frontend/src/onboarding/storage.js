@@ -1,6 +1,10 @@
 export const ONBOARDING_SELECTIONS_STORAGE_KEY =
   "jeal_onboarding_selected_interest_ids";
 
+function isStoredInterestId(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export function readOnboardingSelections() {
   const raw = localStorage.getItem(ONBOARDING_SELECTIONS_STORAGE_KEY);
 
@@ -11,7 +15,7 @@ export function readOnboardingSelections() {
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
-      ? parsed.filter((value) => Number.isInteger(value))
+      ? parsed.filter(isStoredInterestId)
       : [];
   } catch {
     return [];

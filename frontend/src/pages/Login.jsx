@@ -7,7 +7,8 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || "/";
+  const requestedFrom = location.state?.from;
+  const from = requestedFrom && requestedFrom !== "/" ? requestedFrom : "/results";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");

@@ -80,7 +80,7 @@ export default function OnboardingQuiz() {
         const ids = Array.isArray(userSelections)
           ? userSelections
               .map((selection) => selection.interest_id)
-              .filter((value) => Number.isInteger(value))
+              .filter((value) => typeof value === "string" && value.trim().length > 0)
           : [];
 
         const pendingIds = readOnboardingSelections();
@@ -187,8 +187,8 @@ export default function OnboardingQuiz() {
       });
 
       clearOnboardingSelections();
-      setSaveMessage("Your interests are saved. Redirecting to your dashboard...");
-      window.setTimeout(() => navigate("/dashboard", { replace: true }), 900);
+      setSaveMessage("Your interests are saved. Redirecting to your results...");
+      window.setTimeout(() => navigate("/results", { replace: true }), 900);
     } catch (saveSelectionsError) {
       if (saveSelectionsError.status === 401 || saveSelectionsError.status === 403) {
         setSaveError("Please log in again to save your onboarding answers.");
@@ -219,25 +219,6 @@ export default function OnboardingQuiz() {
 
     await saveSelections();
   };
-
-  useEffect(() => {
-    if (!isAuthed || !userId || !hasLoadedSavedSelections || !hasAnySelection) {
-      return;
-    }
-
-    const pendingIds = readOnboardingSelections();
-    if (pendingIds.length === 0) {
-      return;
-    }
-
-    saveSelections();
-  }, [
-    hasAnySelection,
-    hasLoadedSavedSelections,
-    isAuthed,
-    saveSelections,
-    userId,
-  ]);
 
   if (isLoading || !hasLoadedSavedSelections) {
     return (
