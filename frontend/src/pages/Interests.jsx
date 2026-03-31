@@ -225,37 +225,32 @@ export default function Interests() {
                             onClick={() => handleToggleInterest(interest.id)}
                             style={{
                               ...interestRow,
-                              borderColor: checked ? "#111827" : "#e5e7eb",
-                              backgroundColor: checked
-                                ? "#111827"
-                                : "white",
-                              color: checked ? "white" : "black",
+                              borderColor: checked
+                                ? "#113c2d"
+                                : "rgba(17, 24, 39, 0.12)",
+                              background: checked
+                                ? "linear-gradient(135deg, #d9f99d 0%, #bbf7d0 100%)"
+                                : "rgba(255, 255, 255, 0.78)",
+                              boxShadow: checked
+                                ? "0 18px 40px rgba(17, 60, 45, 0.14)"
+                                : "0 10px 24px rgba(15, 23, 42, 0.05)",
                             }}
                           >
-                            <span style={interestCheckboxOuter}>
+                            <span style={optionTopRow}>
+                              <span style={interestLabel}>{interest.name}</span>
                               <span
                                 style={{
-                                  ...interestCheckboxInner,
-                                  opacity: checked ? 1 : 0,
-                                  transform: checked
-                                    ? "scale(1)"
-                                    : "scale(0.8)",
+                                  ...optionDot,
+                                  backgroundColor: checked ? "#113c2d" : "transparent",
+                                  borderColor: checked
+                                    ? "#113c2d"
+                                    : "rgba(17, 24, 39, 0.2)",
                                 }}
                               />
                             </span>
-                            <span style={interestLabel}>
-                              {interest.name}
-                              {interest.description ? (
-                                <span
-                                  style={{
-                                    display: "block",
-                                    fontSize: "12px",
-                                    opacity: checked ? 0.9 : 0.7,
-                                  }}
-                                >
-                                  {interest.description}
-                                </span>
-                              ) : null}
+                            <span style={interestDescription}>
+                              {interest.description ||
+                                "Add this topic to shape your recommendations."}
                             </span>
                           </button>
                         </li>
@@ -273,6 +268,9 @@ export default function Interests() {
 }
 
 const container = {
+  width: "100%",
+  maxWidth: "1080px",
+  margin: "0 auto",
   display: "flex",
   flexDirection: "column",
   gap: "20px",
@@ -351,41 +349,62 @@ const interestList = {
 const interestRow = {
   width: "100%",
   display: "flex",
-  alignItems: "flex-start",
-  gap: "8px",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: "14px",
   textAlign: "left",
-  padding: "8px 10px",
-  borderRadius: "999px",
-  border: "1px solid #e5e7eb",
-  background: "white",
+  padding: "16px",
+  borderRadius: "18px",
+  border: "1px solid rgba(17, 24, 39, 0.12)",
+  background: "rgba(255, 255, 255, 0.78)",
   cursor: "pointer",
-  transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+  minHeight: "118px",
+  transition:
+    "transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
   fontSize: "14px",
 };
 
-const interestCheckboxOuter = {
-  width: "18px",
-  height: "18px",
+const optionTopRow = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "12px",
+};
+
+const optionDot = {
+  width: "20px",
+  height: "20px",
   borderRadius: "999px",
-  border: "2px solid currentColor",
+  border: "2px solid rgba(17, 24, 39, 0.2)",
+  flexShrink: 0,
+};
+
+const interestDescription = {
+  fontSize: "13px",
+  color: "#374151",
+  lineHeight: 1.45,
+};
+
+const interestLabel = {
+  fontSize: "16px",
+  fontWeight: 700,
+  color: "#111827",
+  lineHeight: 1.2,
+};
+
+const legacyInterestCheckboxOuter = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   flexShrink: 0,
 };
 
-const interestCheckboxInner = {
+const legacyInterestCheckboxInner = {
   width: "10px",
   height: "10px",
   borderRadius: "999px",
   backgroundColor: "currentColor",
   transition: "opacity 0.15s ease, transform 0.15s ease",
-};
-
-const interestLabel = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
 };
 
 const mutedText = {

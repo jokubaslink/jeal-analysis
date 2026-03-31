@@ -250,6 +250,9 @@ export default function Results() {
 }
 
 const page = {
+  width: "100%",
+  maxWidth: "1080px",
+  margin: "0 auto",
   display: "flex",
   flexDirection: "column",
   gap: "24px",
