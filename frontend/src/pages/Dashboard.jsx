@@ -159,13 +159,17 @@ export default function Dashboard() {
       <div style={headerRow}>
         <div>
           <h1 style={title}>Dashboard</h1>
-          <p style={subtitle}>You are logged in.</p>
         </div>
       </div>
 
       <div style={grid}>
         <section style={card}>
-          <h2 style={sectionTitle}>Your profile</h2>
+          <div style={profileHeader}>
+            <div>
+              <h2 style={sectionTitle}>Your profile</h2>
+              <p style={profileSubtext}>Keep your details up to date for better recommendations.</p>
+            </div>
+          </div>
 
           {isLoadingProfile ? (
             <div style={skeletonStack}>
@@ -207,7 +211,9 @@ export default function Dashboard() {
                 </div>
                 <div style={detailsRow}>
                   <dt style={detailsLabel}>Email</dt>
-                  <dd style={detailsValue}>{profile.email}</dd>
+                  <dd style={detailsValue}>
+                    <span style={readonlyValue}>{profile.email}</span>
+                  </dd>
                 </div>
                 <div style={detailsRow}>
                   <dt style={detailsLabel}>Programme</dt>
@@ -405,6 +411,9 @@ export default function Dashboard() {
 }
 
 const container = {
+  width: "100%",
+  maxWidth: "1080px",
+  margin: "0 auto",
   display: "flex",
   flexDirection: "column",
   gap: "24px",
@@ -433,24 +442,23 @@ const subtitle = {
 
 const grid = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.5fr) minmax(0, 1fr)",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: "20px",
 };
 
 const card = {
-  padding: "20px",
-  borderRadius: "10px",
-  border: "1px solid #e5e7eb",
+  padding: "24px",
+  borderRadius: "20px",
+  border: "1px solid rgba(17, 24, 39, 0.08)",
   background: "white",
-  boxShadow: "0 8px 20px rgba(0,0,0,0.04)",
+  boxShadow: "0 18px 40px rgba(15, 23, 42, 0.06)",
 };
 
 const sectionTitle = {
   margin: 0,
-  marginBottom: "12px",
-  color: "black",
-  fontSize: "18px",
-  fontWeight: 600,
+  color: "#111827",
+  fontSize: "20px",
+  fontWeight: 700,
 };
 
 const bodyText = {
@@ -509,63 +517,68 @@ const detailsList = {
   padding: 0,
   display: "grid",
   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: "8px 16px",
+  gap: "10px",
 };
 
 const detailsRow = {
   display: "flex",
   flexDirection: "column",
-  gap: "2px",
+  gap: "6px",
+  margin: 0,
+  padding: "12px",
+  borderRadius: "12px",
+  border: "1px solid #e5e7eb",
+  background: "#f9fafb",
 };
 
 const detailsLabel = {
   fontSize: "12px",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  color: "black",
-  opacity: 0.6,
+  color: "#4b5563",
+  fontWeight: 600,
 };
 
 const detailsValue = {
+  margin: 0,
   fontSize: "14px",
-  color: "black",
+  color: "#111827",
 };
 
 const input = {
   width: "100%",
-  padding: "6px 8px",
-  borderRadius: "6px",
+  padding: "10px 12px",
+  borderRadius: "10px",
   border: "1px solid #d1d5db",
   fontSize: "14px",
-  color: "black",
+  color: "#111827",
+  background: "white",
   boxSizing: "border-box",
 };
 
 const actionsRow = {
   display: "flex",
   justifyContent: "flex-end",
-  gap: "8px",
-  marginTop: "12px",
+  gap: "10px",
+  marginTop: "16px",
 };
 
 const primaryButton = {
   borderRadius: "999px",
   border: "none",
-  padding: "8px 16px",
+  padding: "10px 18px",
   background: "#111827",
   color: "white",
   fontSize: "14px",
-  fontWeight: 500,
+  fontWeight: 600,
 };
 
 const secondaryButton = {
   borderRadius: "999px",
   border: "1px solid #d1d5db",
-  padding: "8px 16px",
+  padding: "10px 18px",
   background: "white",
-  color: "black",
+  color: "#111827",
   fontSize: "14px",
-  fontWeight: 500,
+  fontWeight: 600,
 };
 
 const skeletonStack = {
@@ -581,4 +594,27 @@ const skeletonLine = {
     "linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%)",
   backgroundSize: "200% 100%",
   animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
+};
+
+const profileHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "14px",
+  flexWrap: "wrap",
+};
+
+const profileSubtext = {
+  margin: "6px 0 0 0",
+  color: "#4b5563",
+  fontSize: "14px",
+};
+
+const readonlyValue = {
+  display: "inline-block",
+  padding: "8px 10px",
+  borderRadius: "8px",
+  background: "#f3f4f6",
+  border: "1px solid #e5e7eb",
 };

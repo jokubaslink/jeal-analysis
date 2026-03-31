@@ -67,8 +67,9 @@ export default function Register() {
     <div style={styles.container}>
       <form style={styles.card} onSubmit={handleSubmit}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Create account</h2>
-          <p style={styles.subtitle}>Register to access JEAL.</p>
+          <p style={styles.eyebrow}>Get started</p>
+          <h2 style={styles.title}>Create your JEAL account</h2>
+          <p style={styles.subtitle}>Register to save interests and unlock recommendations.</p>
         </div>
 
         <div style={styles.field}>
@@ -79,7 +80,8 @@ export default function Register() {
             id="email"
             style={{
               ...styles.input,
-              borderColor: email.length === 0 || emailIsValid ? "#ccc" : "#dc2626",
+              borderColor:
+                email.length === 0 || emailIsValid ? "#d1d5db" : "#dc2626",
             }}
             type="email"
             placeholder="you@example.com"
@@ -89,7 +91,7 @@ export default function Register() {
             required
           />
           {email.length > 0 && !emailIsValid ? (
-            <span style={styles.error}>Enter a valid email address.</span>
+            <span style={styles.inlineError}>Enter a valid email address.</span>
           ) : null}
         </div>
 
@@ -137,7 +139,7 @@ export default function Register() {
               ...styles.input,
               borderColor:
                 confirmPassword.length === 0
-                  ? "#ccc"
+                  ? "#d1d5db"
                   : passwordsMatch
                   ? "#16a34a"
                   : "#dc2626",
@@ -151,7 +153,7 @@ export default function Register() {
             required
           />
           {confirmPassword.length > 0 && !passwordsMatch && (
-            <span style={styles.error}>Passwords do not match.</span>
+            <span style={styles.inlineError}>Passwords do not match.</span>
           )}
         </div>
 
@@ -182,21 +184,24 @@ export default function Register() {
 
 const styles = {
   container: {
+    minHeight: "70vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    height: "70vh",
   },
   card: {
     display: "flex",
     flexDirection: "column",
     gap: "14px",
-    padding: "28px",
-    width: "360px",
-    background: "white",
-    borderRadius: "10px",
-    border: "1px solid #e5e7eb",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.06)",
+    width: "100%",
+    maxWidth: "460px",
+    padding: "30px",
+    borderRadius: "24px",
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background:
+      "radial-gradient(circle at top left, rgba(190, 242, 100, 0.22), transparent 38%), linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249, 250, 251, 0.98) 100%)",
+    boxShadow: "0 24px 60px rgba(15, 23, 42, 0.1)",
+    backdropFilter: "blur(8px)",
   },
   header: {
     display: "flex",
@@ -204,16 +209,24 @@ const styles = {
     gap: "6px",
     marginBottom: "6px",
   },
+  eyebrow: {
+    margin: 0,
+    fontSize: "12px",
+    fontWeight: 700,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: "#3f6212",
+  },
   title: {
     margin: 0,
-    color: "black",
-    fontSize: "22px",
+    color: "#111827",
+    fontSize: "30px",
     fontWeight: 700,
+    lineHeight: 1,
   },
   subtitle: {
     margin: 0,
-    color: "black",
-    opacity: 0.7,
+    color: "#4b5563",
     fontSize: "14px",
   },
   field: {
@@ -222,17 +235,18 @@ const styles = {
     gap: "6px",
   },
   label: {
-    color: "black",
-    fontSize: "14px",
-    fontWeight: 600,
+    color: "#111827",
+    fontSize: "13px",
+    fontWeight: 700,
   },
   input: {
-    padding: "10px 12px",
-    borderRadius: "8px",
-    border: "1px solid #ccc",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    border: "1px solid #d1d5db",
     outline: "none",
-    color: "black",
-    background: "white",
+    color: "#111827",
+    background: "rgba(255, 255, 255, 0.92)",
+    fontSize: "14px",
   },
   hint: {
     fontSize: "12px",
@@ -245,7 +259,7 @@ const styles = {
     flexDirection: "column",
     gap: "2px",
     fontSize: "12px",
-    color: "black",
+    color: "#1f2937",
     opacity: 0.8,
   },
   hintItem: {
@@ -254,23 +268,39 @@ const styles = {
     alignItems: "center",
   },
   error: {
+    margin: 0,
+    color: "#b91c1c",
+    fontSize: "13px",
+    fontWeight: 700,
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    borderRadius: "10px",
+    padding: "10px 12px",
+  },
+  inlineError: {
     fontSize: "12px",
-    color: "#dc2626",
-    fontWeight: 600,
+    color: "#b91c1c",
+    fontWeight: 700,
   },
   success: {
-    fontSize: "12px",
-    color: "#16a34a",
-    fontWeight: 600,
+    margin: 0,
+    color: "#166534",
+    fontSize: "13px",
+    fontWeight: 700,
+    background: "#f0fdf4",
+    border: "1px solid #bbf7d0",
+    borderRadius: "10px",
+    padding: "10px 12px",
   },
   button: {
-    padding: "10px 12px",
-    borderRadius: "8px",
+    padding: "12px 16px",
+    borderRadius: "999px",
     border: "none",
-    background: "#111",
+    background: "#111827",
     color: "white",
     cursor: "pointer",
-    fontWeight: 600,
+    fontWeight: 700,
+    fontSize: "14px",
     marginTop: "4px",
   },
   footer: {
@@ -281,14 +311,13 @@ const styles = {
     marginTop: "6px",
   },
   footerText: {
-    color: "black",
-    opacity: 0.75,
+    color: "#4b5563",
     fontSize: "14px",
   },
   linkButton: {
     border: "none",
     background: "transparent",
-    color: "black",
+    color: "#111827",
     cursor: "pointer",
     fontWeight: 700,
     textDecoration: "underline",
