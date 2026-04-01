@@ -166,6 +166,18 @@ export default function OnboardingQuiz() {
     setCurrentStep((previousStep) => Math.min(previousStep + 1, totalSteps - 1));
   };
 
+  const handleSkipQuiz = () => {
+    setSaveMessage("");
+    setSaveError("");
+    if (isAuthed) {
+      navigate("/results", { replace: true });
+      return;
+    }
+    navigate("/register", {
+      state: { from: "/" },
+    });
+  };
+
   const saveSelections = useCallback(async () => {
     if (!userId || !hasAnySelection) {
       return;
@@ -279,8 +291,13 @@ export default function OnboardingQuiz() {
               <p style={eyebrow}>Personalize your JEAL experience</p>
               <h1 style={title}>Start with a quick interest quiz</h1>
             </div>
-            <div style={statusPill}>
-              {selectedIds.size} picked
+            <div style={headerActions}>
+              <button type="button" onClick={handleSkipQuiz} style={ghostButton}>
+                Skip quiz
+              </button>
+              <div style={statusPill}>
+                {selectedIds.size} picked
+              </div>
             </div>
           </div>
 
@@ -362,6 +379,15 @@ export default function OnboardingQuiz() {
             </button>
 
             <div style={footerActions}>
+              {!isAuthed ? (
+                <button
+                  type="button"
+                  onClick={handleSkipQuiz}
+                  style={ghostButton}
+                >
+                  Skip quiz
+                </button>
+              ) : null}
               {!isAuthed && isLastStep ? (
                 <>
                   <button
@@ -448,6 +474,14 @@ const heroHeader = {
   gap: "16px",
   marginBottom: "28px",
   flexWrap: "wrap",
+};
+
+const headerActions = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
 };
 
 const eyebrow = {
