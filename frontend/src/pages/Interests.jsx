@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
+import { Alert, Button, Card, CardDescription, CardTitle, EmptyState, Skeleton } from "../components/ui/index.js";
 
 export default function Interests() {
   const navigate = useNavigate();
@@ -14,30 +15,19 @@ export default function Interests() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState("");
   const [saveErrorMessage, setSaveErrorMessage] = useState("");
-  const validationMessage = "Please select at least one interest.";
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setError("");
-    setSaveSuccessMessage("");
-    setSaveErrorMessage("");
     try {
-      const requests = [
-        apiFetch("/interest-categories"),
-        apiFetch("/interests"),
-      ];
-
-      if (userId) {
-        requests.push(apiFetch(`/users/${userId}/interests`));
-      }
+      const requests = [apiFetch("/interest-categories"), apiFetch("/interests")];
+      if (userId) requests.push(apiFetch(`/users/${userId}/interests`));
 
       const [cats, ints, userInts] = await Promise.all(requests);
-
       setCategories(Array.isArray(cats) ? cats : []);
       setInterests(Array.isArray(ints) ? ints : []);
 
       if (userId && Array.isArray(userInts)) {
-        // backend returns objects with `interest_id`
         setSelectedIds(new Set(userInts.map((i) => i.interest_id)));
       }
     } catch (e) {
@@ -45,50 +35,19 @@ export default function Interests() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
-    let ignore = false;
-    const run = async () => {
-      try {
-        const requests = [
-          apiFetch("/interest-categories"),
-          apiFetch("/interests"),
-        ];
-        if (userId) {
-          requests.push(apiFetch(`/users/${userId}/interests`));
-        }
-
-        const [cats, ints, userInts] = await Promise.all(requests);
-        if (ignore) return;
-        setCategories(Array.isArray(cats) ? cats : []);
-        setInterests(Array.isArray(ints) ? ints : []);
-        if (userId && Array.isArray(userInts)) {
-          // backend returns objects with `interest_id`
-          setSelectedIds(new Set(userInts.map((i) => i.interest_id)));
-        }
-      } catch (e) {
-        if (!ignore) setError(e.message || "Failed to load interests.");
-      } finally {
-        if (!ignore) setIsLoading(false);
-      }
-    };
-    run();
-    return () => {
-      ignore = true;
-    };
-  }, [userId]);
+    loadData();
+  }, [loadData]);
 
   const handleToggleInterest = (id) => {
     setSaveSuccessMessage("");
     setSaveErrorMessage("");
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -105,11 +64,7 @@ export default function Interests() {
     setSaveErrorMessage("");
 
     const payload = {
-      // backend expects `items: [{ interest_id, level }]`
-      items: Array.from(selectedIds).map((id) => ({
-        interest_id: id,
-        level: null,
-      })),
+      items: Array.from(selectedIds).map((id) => ({ interest_id: id, level: null })),
     };
 
     try {
@@ -125,10 +80,7 @@ export default function Interests() {
         navigate("/login");
         return;
       }
-
-      setSaveErrorMessage(
-        e.detail ?? e.message ?? "Failed to save interests."
-      );
+      setSaveErrorMessage(e.detail ?? e.message ?? "Failed to save interests.");
     } finally {
       setIsSaving(false);
     }
@@ -137,85 +89,92 @@ export default function Interests() {
   const anySelected = selectedIds.size > 0;
 
   return (
-    <div style={container}>
-      <header style={header}>
-        <div>
-          <h1 style={title}>Interests</h1>
-          <p style={subtitle}>
-            Choose the activities and topics that match your preferences.
+    <div className="mx-auto flex w-full max-w-[var(--layout-max-width)] flex-col gap-[length:var(--space-11)]">
+      <header className="flex flex-col gap-[length:var(--space-7)] md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-[length:var(--space-2)]">
+          <p className="m-0 text-[length:var(--font-size-caption)] font-bold uppercase tracking-[var(--letter-spacing-ui)] text-[var(--color-brand-green)]">
+            Profile setup
+          </p>
+          <h1 className="m-0 text-[length:var(--font-size-display)] font-bold text-[var(--color-ink)]">
+            Select your interests
+          </h1>
+          <p className="m-0 max-w-[680px] text-[length:var(--font-size-body)] text-[var(--color-ink-muted)]">
+            Choose topics you like. We will use them to personalize clubs, events, and recommendations.
           </p>
         </div>
-        <div style={headerActions}>
-          {anySelected ? (
-            <div style={pill}>
-              <span style={pillDot} />
-              <span style={pillText}>
-                {selectedIds.size} interest
-                {selectedIds.size === 1 ? "" : "s"} selected
-              </span>
-            </div>
-          ) : null}
-          {saveSuccessMessage ? (
-            <p style={successText}>{saveSuccessMessage}</p>
-          ) : null}
-          {saveErrorMessage ? (
-            <p style={errorText}>{saveErrorMessage}</p>
-          ) : null}
-          {!anySelected ? (
-            <p style={validationText}>{validationMessage}</p>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleSave}
-            style={{
-              ...primaryButton,
-              opacity: isSaving || !anySelected ? 0.8 : 1,
-              cursor: isSaving || !anySelected ? "default" : "pointer",
-            }}
-            disabled={isSaving || !userId || !anySelected}
-          >
-            {isSaving ? "Saving…" : "Save"}
-          </button>
+
+        <div className="flex flex-col gap-[length:var(--space-4)] md:items-end">
+          <div className="inline-flex w-fit items-center gap-[length:var(--space-3)] rounded-[var(--radius-pill)] border border-[var(--color-border-medium)] bg-[rgba(17,24,39,0.06)] px-[length:var(--space-5)] py-[length:var(--space-3)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--color-brand-green)]" />
+            <span className="text-[length:var(--font-size-small)] font-bold text-[var(--color-ink)]">
+              {selectedIds.size} interest{selectedIds.size === 1 ? "" : "s"} selected
+            </span>
+          </div>
+          <Button onClick={handleSave} disabled={isSaving || !userId || !anySelected}>
+            {isSaving ? "Saving..." : "Save interests"}
+          </Button>
         </div>
       </header>
 
-      <section style={card}>
+      {saveSuccessMessage ? <Alert variant="success">{saveSuccessMessage}</Alert> : null}
+      {saveErrorMessage ? <Alert variant="error">{saveErrorMessage}</Alert> : null}
+      {!anySelected ? (
+        <Alert variant="error">Please select at least one interest before saving.</Alert>
+      ) : null}
+
+      <Card className="p-[length:var(--space-10)]">
+        <CardTitle as="h2">Interest categories</CardTitle>
+        <CardDescription>
+          Browse by category and tap cards to toggle selection.
+        </CardDescription>
+
         {isLoading ? (
-          <div style={skeletonStack}>
-            <div style={skeletonLine} />
-            <div style={skeletonLine} />
-            <div style={skeletonLine} />
-            <div style={skeletonLine} />
+          <div className="mt-[length:var(--space-10)] grid grid-cols-1 gap-[length:var(--space-7)] md:grid-cols-2">
+            {[0, 1, 2, 3].map((idx) => (
+              <Skeleton
+                key={idx}
+                className="h-[140px] rounded-[var(--radius-lg)] border border-[var(--color-border)]"
+              />
+            ))}
           </div>
         ) : error ? (
-          <div style={centered}>
-            <p style={errorText}>{error}</p>
-            <button type="button" onClick={loadData} style={primaryButton}>
+          <div className="mt-[length:var(--space-10)] flex flex-col items-start gap-[length:var(--space-5)]">
+            <Alert variant="error">{error}</Alert>
+            <Button variant="secondary" onClick={loadData}>
               Retry
-            </button>
+            </Button>
           </div>
         ) : categories.length === 0 ? (
-          <p style={mutedText}>No interest categories are available yet.</p>
+          <div className="mt-[length:var(--space-10)]">
+            <EmptyState
+              align="left"
+              title="No interest categories available"
+              description="Add categories in admin settings to populate this selection step."
+            />
+          </div>
         ) : (
-          <div style={categoriesGrid}>
+          <div className="mt-[length:var(--space-10)] grid grid-cols-1 gap-[length:var(--space-8)] xl:grid-cols-2">
             {categories.map((category) => {
-              const items = interests.filter(
-                (i) => i.category_id === category.id
-              );
-              if (items.length === 0) {
-                return null;
-              }
+              const items = interests.filter((i) => i.category_id === category.id);
+              if (items.length === 0) return null;
+
               return (
-                <div key={category.id} style={categoryCard}>
-                  <div style={categoryHeader}>
-                    <h2 style={categoryTitle}>{category.name}</h2>
+                <section
+                  key={category.id}
+                  className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[length:var(--space-8)]"
+                >
+                  <div className="mb-[length:var(--space-6)]">
+                    <h3 className="m-0 text-[length:var(--font-size-h3)] font-bold text-[var(--color-ink)]">
+                      {category.name}
+                    </h3>
                     {category.description ? (
-                      <p style={categoryDescription}>
+                      <p className="mt-[length:var(--space-2)] text-[length:var(--font-size-body)] text-[var(--color-ink-muted)]">
                         {category.description}
                       </p>
                     ) : null}
                   </div>
-                  <ul style={interestList}>
+
+                  <ul className="grid list-none grid-cols-1 gap-[length:var(--space-5)] p-0 sm:grid-cols-2">
                     {items.map((interest) => {
                       const checked = selectedIds.has(interest.id);
                       return (
@@ -223,276 +182,44 @@ export default function Interests() {
                           <button
                             type="button"
                             onClick={() => handleToggleInterest(interest.id)}
-                            style={{
-                              ...interestRow,
-                              borderColor: checked
-                                ? "#113c2d"
-                                : "rgba(17, 24, 39, 0.12)",
-                              background: checked
-                                ? "linear-gradient(135deg, #d9f99d 0%, #bbf7d0 100%)"
-                                : "rgba(255, 255, 255, 0.78)",
-                              boxShadow: checked
-                                ? "0 18px 40px rgba(17, 60, 45, 0.14)"
-                                : "0 10px 24px rgba(15, 23, 42, 0.05)",
-                            }}
+                            className={[
+                              "h-full w-full rounded-[var(--radius-lg)] border p-[length:var(--space-6)] text-left transition-all duration-[var(--duration-fast)]",
+                              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-green)]",
+                              checked
+                                ? "border-[var(--color-brand-green)] bg-[linear-gradient(135deg,rgba(190,242,100,0.26),rgba(187,247,208,0.38))] shadow-[0_14px_30px_rgba(15,23,42,0.09)]"
+                                : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-medium)] hover:bg-[rgba(17,24,39,0.02)]",
+                            ].join(" ")}
                           >
-                            <span style={optionTopRow}>
-                              <span style={interestLabel}>{interest.name}</span>
+                            <div className="mb-[length:var(--space-4)] flex items-start justify-between gap-[length:var(--space-3)]">
+                              <span className="text-[length:var(--font-size-body)] font-bold text-[var(--color-ink)]">
+                                {interest.name}
+                              </span>
                               <span
-                                style={{
-                                  ...optionDot,
-                                  backgroundColor: checked ? "#113c2d" : "transparent",
-                                  borderColor: checked
-                                    ? "#113c2d"
-                                    : "rgba(17, 24, 39, 0.2)",
-                                }}
-                              />
-                            </span>
-                            <span style={interestDescription}>
-                              {interest.description ||
-                                "Add this topic to shape your recommendations."}
-                            </span>
+                                className={[
+                                  "mt-[2px] inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2",
+                                  checked
+                                    ? "border-[var(--color-brand-green)] bg-[var(--color-brand-green)]"
+                                    : "border-[var(--color-border-medium)] bg-transparent",
+                                ].join(" ")}
+                              >
+                                {checked ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+                              </span>
+                            </div>
+                            <p className="m-0 text-[length:var(--font-size-small)] leading-[var(--line-height-relaxed)] text-[var(--color-ink-muted)]">
+                              {interest.description || "Select to use this topic in your recommendations."}
+                            </p>
                           </button>
                         </li>
                       );
                     })}
                   </ul>
-                </div>
+                </section>
               );
             })}
           </div>
         )}
-      </section>
+      </Card>
     </div>
   );
 }
-
-const container = {
-  width: "100%",
-  maxWidth: "1080px",
-  margin: "0 auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: "20px",
-};
-
-const header = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "16px",
-  flexWrap: "wrap",
-};
-
-const title = {
-  margin: 0,
-  color: "black",
-  fontSize: "28px",
-  fontWeight: 700,
-};
-
-const subtitle = {
-  margin: "4px 0 0 0",
-  color: "black",
-  opacity: 0.7,
-  fontSize: "14px",
-};
-
-const card = {
-  padding: "20px",
-  borderRadius: "10px",
-  border: "1px solid #e5e7eb",
-  background: "white",
-  boxShadow: "0 8px 20px rgba(0,0,0,0.04)",
-};
-
-const categoriesGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "16px",
-};
-
-const categoryCard = {
-  borderRadius: "8px",
-  border: "1px solid #e5e7eb",
-  padding: "12px",
-  boxSizing: "border-box",
-};
-
-const categoryHeader = {
-  marginBottom: "8px",
-};
-
-const categoryTitle = {
-  margin: 0,
-  color: "black",
-  fontSize: "16px",
-  fontWeight: 600,
-};
-
-const categoryDescription = {
-  margin: "4px 0 0 0",
-  color: "black",
-  opacity: 0.75,
-  fontSize: "13px",
-};
-
-const interestList = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-};
-
-const interestRow = {
-  width: "100%",
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  gap: "14px",
-  textAlign: "left",
-  padding: "16px",
-  borderRadius: "18px",
-  border: "1px solid rgba(17, 24, 39, 0.12)",
-  background: "rgba(255, 255, 255, 0.78)",
-  cursor: "pointer",
-  minHeight: "118px",
-  transition:
-    "transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
-  fontSize: "14px",
-};
-
-const optionTopRow = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "12px",
-};
-
-const optionDot = {
-  width: "20px",
-  height: "20px",
-  borderRadius: "999px",
-  border: "2px solid rgba(17, 24, 39, 0.2)",
-  flexShrink: 0,
-};
-
-const interestDescription = {
-  fontSize: "13px",
-  color: "#374151",
-  lineHeight: 1.45,
-};
-
-const interestLabel = {
-  fontSize: "16px",
-  fontWeight: 700,
-  color: "#111827",
-  lineHeight: 1.2,
-};
-
-const legacyInterestCheckboxOuter = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-};
-
-const legacyInterestCheckboxInner = {
-  width: "10px",
-  height: "10px",
-  borderRadius: "999px",
-  backgroundColor: "currentColor",
-  transition: "opacity 0.15s ease, transform 0.15s ease",
-};
-
-const mutedText = {
-  margin: 0,
-  color: "black",
-  opacity: 0.6,
-  fontSize: "14px",
-};
-
-const errorText = {
-  margin: "0 0 12px 0",
-  color: "#dc2626",
-  fontSize: "14px",
-};
-
-const validationText = {
-  margin: "0 0 12px 0",
-  color: "#b45309",
-  fontSize: "14px",
-};
-
-const successText = {
-  margin: "0 0 12px 0",
-  color: "#16a34a",
-  fontSize: "14px",
-};
-
-const primaryButton = {
-  borderRadius: "999px",
-  border: "none",
-  padding: "8px 16px",
-  background: "#111827",
-  color: "white",
-  fontSize: "14px",
-  fontWeight: 500,
-  cursor: "pointer",
-};
-
-const headerActions = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
-
-const skeletonStack = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-};
-
-const skeletonLine = {
-  height: "14px",
-  borderRadius: "999px",
-  background:
-    "linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%)",
-  backgroundSize: "200% 100%",
-  animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
-};
-
-const centered = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "8px",
-};
-
-const pill = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  padding: "6px 10px",
-  borderRadius: "999px",
-  background: "#111827",
-};
-
-const pillDot = {
-  width: "8px",
-  height: "8px",
-  borderRadius: "999px",
-  backgroundColor: "#22c55e",
-};
-
-const pillText = {
-  color: "white",
-  fontSize: "12px",
-  fontWeight: 500,
-};
 

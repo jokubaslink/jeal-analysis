@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
+import { Alert, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -209,14 +210,18 @@ export default function Dashboard() {
           </div>
 
           {isLoadingProfile ? (
-            <div style={skeletonStack}>
-              <div style={skeletonLine} />
-              <div style={skeletonLine} />
-              <div style={skeletonLine} />
-              <div style={skeletonLine} />
+            <div style={skeletonStack} aria-hidden="true">
+              <Skeleton style={skeletonLine} />
+              <Skeleton style={skeletonLine} />
+              <Skeleton style={skeletonLine} />
+              <Skeleton style={skeletonLine} />
             </div>
           ) : !userId ? (
-            <p style={mutedText}>No user is currently associated with this session.</p>
+            <EmptyState
+              align="left"
+              title="No active session found"
+              description="Log in to view and edit your profile details."
+            />
           ) : profile && isEditingProfile && formValues ? (
             <form onSubmit={handleSaveProfile}>
               <dl style={detailsList}>
@@ -352,12 +357,8 @@ export default function Dashboard() {
                   {isSavingProfile ? "Saving…" : "Save"}
                 </button>
               </div>
-              {profileSuccessMessage ? (
-                <p style={successText}>{profileSuccessMessage}</p>
-              ) : null}
-              {profileErrorMessage ? (
-                <p style={errorText}>{profileErrorMessage}</p>
-              ) : null}
+              {profileSuccessMessage ? <Alert variant="success" className="mt-[10px]">{profileSuccessMessage}</Alert> : null}
+              {profileErrorMessage ? <Alert variant="error" className="mt-[10px]">{profileErrorMessage}</Alert> : null}
             </form>
           ) : profile ? (
             <>
@@ -400,15 +401,15 @@ export default function Dashboard() {
                   Edit profile
                 </button>
               </div>
-              {profileSuccessMessage ? (
-                <p style={successText}>{profileSuccessMessage}</p>
-              ) : null}
-              {profileErrorMessage ? (
-                <p style={errorText}>{profileErrorMessage}</p>
-              ) : null}
+              {profileSuccessMessage ? <Alert variant="success" className="mt-[10px]">{profileSuccessMessage}</Alert> : null}
+              {profileErrorMessage ? <Alert variant="error" className="mt-[10px]">{profileErrorMessage}</Alert> : null}
             </>
           ) : (
-            <p style={mutedText}>We could not load your profile details.</p>
+            <EmptyState
+              align="left"
+              title="Profile unavailable"
+              description="We could not load your profile details right now."
+            />
           )}
         </section>
 
@@ -429,9 +430,17 @@ export default function Dashboard() {
             </button>
           </div>
           {isLoadingInterests ? (
-            <p style={mutedText}>Loading interests…</p>
+            <LoadingState
+              align="left"
+              title="Loading interests"
+              description="Fetching your saved preferences."
+            />
           ) : !userId ? (
-            <p style={mutedText}>Log in to see your interests.</p>
+            <EmptyState
+              align="left"
+              title="Log in to see your interests"
+              description="Your saved interests will appear here after sign in."
+            />
           ) : groupedUserInterests.length > 0 ? (
             <div style={interestStack}>
               {groupedUserInterests.map(([categoryName, items]) => (
@@ -448,9 +457,11 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p style={mutedText}>
-              No interests saved yet. Complete the quiz or add interests to improve recommendations.
-            </p>
+            <EmptyState
+              align="left"
+              title="No interests saved yet"
+              description="Complete the quiz or add interests to improve recommendations."
+            />
           )}
         </section>
 
@@ -461,7 +472,11 @@ export default function Dashboard() {
               <strong>{usersCount}</strong> registered user{usersCount === 1 ? "" : "s"}
             </p>
           ) : (
-            <p style={mutedText}>Loading user statistics…</p>
+            <LoadingState
+              align="left"
+              title="Loading user statistics"
+              description="Fetching latest system overview metrics."
+            />
           )}
 
           {categories.length > 0 ? (
@@ -479,12 +494,16 @@ export default function Dashboard() {
               </ul>
             </div>
           ) : (
-            <p style={mutedText}>No interest categories available yet.</p>
+            <EmptyState
+              align="left"
+              title="No interest categories available"
+              description="Add categories to make this section useful."
+            />
           )}
         </section>
       </div>
 
-      {errorMessage ? <p style={errorText}>{errorMessage}</p> : null}
+      {errorMessage ? <Alert variant="error">{errorMessage}</Alert> : null}
     </div>
   );
 }
@@ -495,7 +514,7 @@ const container = {
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: "24px",
+  gap: "clamp(14px, 3vw, 24px)",
 };
 
 const headerRow = {
@@ -512,13 +531,6 @@ const title = {
   fontWeight: 700,
 };
 
-const subtitle = {
-  margin: "4px 0 0 0",
-  color: "black",
-  opacity: 0.7,
-  fontSize: "14px",
-};
-
 const grid = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr)",
@@ -526,7 +538,7 @@ const grid = {
 };
 
 const card = {
-  padding: "24px",
+  padding: "clamp(14px, 3.5vw, 24px)",
   borderRadius: "20px",
   border: "1px solid rgba(17, 24, 39, 0.08)",
   background: "white",
@@ -544,25 +556,6 @@ const bodyText = {
   margin: 0,
   color: "black",
   fontSize: "14px",
-};
-
-const mutedText = {
-  margin: 0,
-  color: "black",
-  opacity: 0.6,
-  fontSize: "14px",
-};
-
-const errorText = {
-  margin: 0,
-  marginTop: "8px",
-  color: "#dc2626",
-};
-
-const successText = {
-  margin: 0,
-  marginTop: "8px",
-  color: "#16a34a",
 };
 
 const subheading = {
@@ -595,7 +588,7 @@ const detailsList = {
   margin: 0,
   padding: 0,
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "10px",
 };
 
@@ -669,10 +662,6 @@ const skeletonStack = {
 const skeletonLine = {
   height: "12px",
   borderRadius: "999px",
-  background:
-    "linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%)",
-  backgroundSize: "200% 100%",
-  animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
 };
 
 const profileHeader = {

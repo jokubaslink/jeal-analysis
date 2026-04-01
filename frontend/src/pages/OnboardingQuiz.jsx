@@ -15,6 +15,7 @@ import {
   scoreQuizAnswers,
   suggestInterestIdsFromCategoryScores,
 } from "../onboarding/quizEngine.js";
+import { Alert, EmptyState, Skeleton } from "../components/ui/index.js";
 
 export default function OnboardingQuiz() {
   const navigate = useNavigate();
@@ -293,13 +294,13 @@ export default function OnboardingQuiz() {
       <div style={page}>
         <section style={shell}>
           <div style={heroCard}>
-            <div style={skeletonBar} />
-            <div style={skeletonTitle} />
-            <div style={skeletonText} />
+            <Skeleton style={skeletonBar} />
+            <Skeleton style={skeletonTitle} />
+            <Skeleton style={skeletonText} />
             <div style={skeletonGrid}>
-              <div style={skeletonOption} />
-              <div style={skeletonOption} />
-              <div style={skeletonOption} />
+              <Skeleton style={skeletonOption} />
+              <Skeleton style={skeletonOption} />
+              <Skeleton style={skeletonOption} />
             </div>
           </div>
         </section>
@@ -314,7 +315,9 @@ export default function OnboardingQuiz() {
           <div style={heroCard}>
             <p style={eyebrow}>Onboarding quiz</p>
             <h1 style={title}>We could not load the quiz</h1>
-            <p style={body}>{error}</p>
+            <Alert variant="error" className="mt-[length:var(--space-6)]">
+              {error}
+            </Alert>
             <button type="button" style={primaryButton} onClick={() => window.location.reload()}>
               Retry
             </button>
@@ -330,8 +333,11 @@ export default function OnboardingQuiz() {
         <section style={shell}>
           <div style={heroCard}>
             <p style={eyebrow}>Onboarding quiz</p>
-            <h1 style={title}>No quiz steps are available yet</h1>
-            <p style={body}>Add interest categories and interests to populate the onboarding flow.</p>
+            <EmptyState
+              align="left"
+              title="No quiz steps are available yet"
+              description="Add interest categories and interests to populate the onboarding flow."
+            />
           </div>
         </section>
       </div>
@@ -452,8 +458,8 @@ export default function OnboardingQuiz() {
             })}
           </div>
 
-          {saveError ? <p style={errorText}>{saveError}</p> : null}
-          {saveMessage ? <p style={successText}>{saveMessage}</p> : null}
+          {saveError ? <Alert variant="error" className="mt-[length:var(--space-8)]">{saveError}</Alert> : null}
+          {saveMessage ? <Alert variant="success" className="mt-[length:var(--space-8)]">{saveMessage}</Alert> : null}
 
           <div style={footer}>
             <button
@@ -821,42 +827,16 @@ const ghostButton = {
   padding: "12px 20px",
 };
 
-const successText = {
-  margin: "20px 0 0 0",
-  color: "#166534",
-  fontWeight: 600,
-};
-
-const errorText = {
-  margin: "20px 0 0 0",
-  color: "#b91c1c",
-  fontWeight: 600,
-};
-
-const body = {
-  margin: "14px 0 0 0",
-  fontSize: "15px",
-  color: "#4b5563",
-};
-
 const skeletonBar = {
   width: "38%",
   height: "14px",
   borderRadius: "999px",
-  background:
-    "linear-gradient(90deg, #eef2e7 0%, #d7dfcf 40%, #eef2e7 80%)",
-  backgroundSize: "200% 100%",
-  animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
 };
 
 const skeletonTitle = {
   width: "58%",
   height: "56px",
   borderRadius: "20px",
-  background:
-    "linear-gradient(90deg, #eef2e7 0%, #d7dfcf 40%, #eef2e7 80%)",
-  backgroundSize: "200% 100%",
-  animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
   marginTop: "20px",
 };
 
@@ -864,10 +844,6 @@ const skeletonText = {
   width: "76%",
   height: "18px",
   borderRadius: "999px",
-  background:
-    "linear-gradient(90deg, #eef2e7 0%, #d7dfcf 40%, #eef2e7 80%)",
-  backgroundSize: "200% 100%",
-  animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
   marginTop: "20px",
 };
 
@@ -881,8 +857,4 @@ const skeletonGrid = {
 const skeletonOption = {
   height: "148px",
   borderRadius: "24px",
-  background:
-    "linear-gradient(90deg, #eef2e7 0%, #d7dfcf 40%, #eef2e7 80%)",
-  backgroundSize: "200% 100%",
-  animation: "jeal-skeleton-pulse 1.4s ease-in-out infinite",
 };

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
+import { Alert, EmptyState, LoadingState } from "../components/ui/index.js";
 
 export default function Results() {
   const navigate = useNavigate();
@@ -109,11 +110,11 @@ export default function Results() {
   if (isLoading) {
     return (
       <div style={page}>
-        <section style={heroCard}>
-          <p style={eyebrow}>Quiz results</p>
-          <h1 style={title}>Building your recommendations</h1>
-          <p style={body}>We are matching your saved interests with clubs and upcoming events.</p>
-        </section>
+        <LoadingState
+          title="Building your recommendations"
+          description="We are matching your saved interests with clubs and upcoming events."
+          className="max-w-[680px]"
+        />
       </div>
     );
   }
@@ -134,7 +135,11 @@ export default function Results() {
           </button>
         </div>
 
-        {errorMessage ? <p style={errorText}>{errorMessage}</p> : null}
+        {errorMessage ? (
+          <Alert variant="error" className="mt-[length:var(--space-7)]">
+            {errorMessage}
+          </Alert>
+        ) : null}
       </section>
 
       <div style={resultsGrid}>
@@ -160,9 +165,11 @@ export default function Results() {
               ))}
             </div>
           ) : (
-            <p style={emptyText}>
-              Save a few quiz answers to unlock suggested interests and stronger recommendations.
-            </p>
+            <EmptyState
+              align="left"
+              title="No suggested interests yet"
+              description="Save a few quiz answers to unlock suggested interests and stronger recommendations."
+            />
           )}
         </section>
 
@@ -191,9 +198,11 @@ export default function Results() {
               ))}
             </div>
           ) : (
-            <p style={emptyText}>
-              No club matches yet. Add more interests or seed more club data to expand results.
-            </p>
+            <EmptyState
+              align="left"
+              title="No club matches yet"
+              description="Add more interests or seed more club data to expand results."
+            />
           )}
         </section>
 
@@ -224,9 +233,11 @@ export default function Results() {
               ))}
             </div>
           ) : (
-            <p style={emptyText}>
-              No upcoming event matches yet. The recommendations area is ready once matching data exists.
-            </p>
+            <EmptyState
+              align="left"
+              title="No event matches yet"
+              description="The recommendations area is ready once matching data exists."
+            />
           )}
         </section>
       </div>
@@ -240,11 +251,11 @@ const page = {
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: "24px",
+  gap: "clamp(14px, 3vw, 24px)",
 };
 
 const heroCard = {
-  padding: "28px 32px",
+  padding: "clamp(16px, 3.8vw, 32px)",
   borderRadius: "28px",
   background:
     "radial-gradient(circle at top right, rgba(249, 115, 22, 0.15), transparent 32%), linear-gradient(180deg, #fffdf8 0%, #fff7ed 100%)",
@@ -286,12 +297,12 @@ const body = {
 
 const resultsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
   gap: "20px",
 };
 
 const panel = {
-  padding: "24px",
+  padding: "clamp(14px, 3.5vw, 24px)",
   borderRadius: "24px",
   background: "white",
   border: "1px solid #e5e7eb",
@@ -417,19 +428,6 @@ const eventGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
   gap: "16px",
-};
-
-const emptyText = {
-  margin: 0,
-  color: "#6b7280",
-  fontSize: "14px",
-  lineHeight: 1.5,
-};
-
-const errorText = {
-  margin: "16px 0 0 0",
-  color: "#b91c1c",
-  fontWeight: 600,
 };
 
 const secondaryButton = {

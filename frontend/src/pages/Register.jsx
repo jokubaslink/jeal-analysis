@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import { Alert } from "../components/ui/index.js";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -157,8 +158,8 @@ export default function Register() {
           )}
         </div>
 
-        {errorMessage ? <p style={styles.error}>{errorMessage}</p> : null}
-        {successMessage ? <p style={styles.success}>{successMessage}</p> : null}
+        {errorMessage ? <Alert variant="error">{errorMessage}</Alert> : null}
+        {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
 
         <button
           style={{ ...styles.button, opacity: canSubmit && !isSubmitting ? 1 : 0.6 }}
@@ -188,6 +189,8 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    padding: "clamp(8px, 3vw, 20px)",
+    boxSizing: "border-box",
   },
   card: {
     display: "flex",
@@ -195,7 +198,7 @@ const styles = {
     gap: "14px",
     width: "100%",
     maxWidth: "460px",
-    padding: "30px",
+    padding: "clamp(16px, 4vw, 30px)",
     borderRadius: "24px",
     border: "1px solid rgba(15, 23, 42, 0.08)",
     background:
@@ -220,7 +223,7 @@ const styles = {
   title: {
     margin: 0,
     color: "#111827",
-    fontSize: "30px",
+    fontSize: "clamp(24px, 5vw, 30px)",
     fontWeight: 700,
     lineHeight: 1,
   },
@@ -267,30 +270,10 @@ const styles = {
     gap: "4px",
     alignItems: "center",
   },
-  error: {
-    margin: 0,
-    color: "#b91c1c",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: "10px",
-    padding: "10px 12px",
-  },
   inlineError: {
     fontSize: "12px",
     color: "#b91c1c",
     fontWeight: 700,
-  },
-  success: {
-    margin: 0,
-    color: "#166534",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
-    borderRadius: "10px",
-    padding: "10px 12px",
   },
   button: {
     padding: "12px 16px",
@@ -309,6 +292,8 @@ const styles = {
     justifyContent: "center",
     alignItems: "center",
     marginTop: "6px",
+    flexWrap: "wrap",
+    textAlign: "center",
   },
   footerText: {
     color: "#4b5563",
