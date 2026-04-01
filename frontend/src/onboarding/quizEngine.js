@@ -129,3 +129,24 @@ export function suggestInterestIdsFromCategoryScores(
 
   return Array.from(new Set(selectedIds)).slice(0, totalLimit);
 }
+
+/**
+ * Combine manually selected interest IDs with IDs inferred from quiz answers (category scores).
+ */
+export function mergeQuizAndManualInterestIds(
+  quizAnswerOptionIds,
+  manualInterestIds,
+  categories,
+  interests
+) {
+  const scores = scoreQuizAnswers(quizAnswerOptionIds);
+  const fromQuiz = suggestInterestIdsFromCategoryScores(
+    scores,
+    categories,
+    interests
+  );
+  const normalizedManual = (manualInterestIds || []).filter(
+    (id) => typeof id === "string" && String(id).trim().length > 0
+  );
+  return [...new Set([...normalizedManual, ...fromQuiz])];
+}

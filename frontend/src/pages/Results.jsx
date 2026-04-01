@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import {
-  clearOnboardingSelections,
-  readOnboardingSelections,
-} from "../onboarding/storage.js";
+import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
 
 export default function Results() {
   const navigate = useNavigate();
@@ -29,19 +26,7 @@ export default function Results() {
       setErrorMessage("");
 
       try {
-        const pendingSelections = readOnboardingSelections();
-        if (pendingSelections.length > 0) {
-          await apiFetch(`/users/${userId}/interests`, {
-            method: "PUT",
-            body: JSON.stringify({
-              items: pendingSelections.map((interestId) => ({
-                interest_id: interestId,
-                level: null,
-              })),
-            }),
-          });
-          clearOnboardingSelections();
-        }
+        await syncPendingOnboardingToUser(userId, apiFetch);
 
         const [savedInterestsResult, recommendedClubsResult, recommendedEventsResult] =
           await Promise.allSettled([

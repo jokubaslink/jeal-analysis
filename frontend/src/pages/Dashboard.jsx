@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
+import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -16,13 +17,20 @@ export default function Dashboard() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState("");
   const [profileErrorMessage, setProfileErrorMessage] = useState("");
+  const [userInterests, setUserInterests] = useState([]);
+  const [isLoadingInterests, setIsLoadingInterests] = useState(true);
 
   useEffect(() => {
     let ignore = false;
     const loadData = async () => {
       try {
-        // Load current user profile
         if (userId) {
+          try {
+            await syncPendingOnboardingToUser(userId, apiFetch);
+          } catch {
+            /* pending quiz/selections can sync on next visit */
+          }
+
           const me = await apiFetch(`/users/${userId}`);
           if (!ignore) {
             setProfile(me);
@@ -39,6 +47,21 @@ export default function Dashboard() {
               city: me.city || "",
             });
           }
+
+          let interestsPayload = [];
+          try {
+            const raw = await apiFetch(`/users/${userId}/interests`);
+            interestsPayload = Array.isArray(raw) ? raw : [];
+          } catch {
+            interestsPayload = [];
+          }
+          if (!ignore) {
+            setUserInterests(interestsPayload);
+          }
+        } else {
+          if (!ignore) {
+            setUserInterests([]);
+          }
         }
 
         const users = await apiFetch("/users");
@@ -50,7 +73,10 @@ export default function Dashboard() {
       } catch (error) {
         if (!ignore) setErrorMessage(error.message);
       } finally {
-        if (!ignore) setIsLoadingProfile(false);
+        if (!ignore) {
+          setIsLoadingProfile(false);
+          setIsLoadingInterests(false);
+        }
       }
     };
     loadData();
@@ -58,6 +84,17 @@ export default function Dashboard() {
       ignore = true;
     };
   }, [userId]);
+
+  const groupedUserInterests = useMemo(() => {
+    const groups = new Map();
+    userInterests.forEach((interest) => {
+      const categoryName = interest.category_name || "Interests";
+      const existing = groups.get(categoryName) || [];
+      existing.push(interest);
+      groups.set(categoryName, existing);
+    });
+    return Array.from(groups.entries());
+  }, [userInterests]);
 
   const displayName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
@@ -376,6 +413,48 @@ export default function Dashboard() {
         </section>
 
         <section style={card}>
+          <div style={profileHeader}>
+            <div>
+              <h2 style={sectionTitle}>Your interests</h2>
+              <p style={profileSubtext}>
+                Saved from the quiz and your selections. Used to personalize clubs and events.
+              </p>
+            </div>
+            <button
+              type="button"
+              style={secondaryButton}
+              onClick={() => navigate("/interests")}
+            >
+              Edit interests
+            </button>
+          </div>
+          {isLoadingInterests ? (
+            <p style={mutedText}>Loading interests…</p>
+          ) : !userId ? (
+            <p style={mutedText}>Log in to see your interests.</p>
+          ) : groupedUserInterests.length > 0 ? (
+            <div style={interestStack}>
+              {groupedUserInterests.map(([categoryName, items]) => (
+                <div key={categoryName} style={interestGroup}>
+                  <p style={interestGroupTitle}>{categoryName}</p>
+                  <div style={chipWrap}>
+                    {items.map((interest) => (
+                      <span key={interest.interest_id} style={interestChip}>
+                        {interest.interest_name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={mutedText}>
+              No interests saved yet. Complete the quiz or add interests to improve recommendations.
+            </p>
+          )}
+        </section>
+
+        <section style={card}>
           <h2 style={sectionTitle}>System overview</h2>
           {usersCount !== null ? (
             <p style={bodyText}>
@@ -617,4 +696,43 @@ const readonlyValue = {
   borderRadius: "8px",
   background: "#f3f4f6",
   border: "1px solid #e5e7eb",
+};
+
+const interestStack = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+};
+
+const interestGroup = {
+  padding: "14px",
+  borderRadius: "14px",
+  border: "1px solid #e5e7eb",
+  background: "#fafafa",
+};
+
+const interestGroupTitle = {
+  margin: 0,
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#374151",
+};
+
+const chipWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px",
+  marginTop: "10px",
+};
+
+const interestChip = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "6px 12px",
+  borderRadius: "999px",
+  background: "white",
+  border: "1px solid #d1d5db",
+  color: "#111827",
+  fontSize: "13px",
+  fontWeight: 600,
 };
