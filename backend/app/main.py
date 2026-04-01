@@ -1,11 +1,12 @@
 import hashlib
 import os
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
@@ -125,13 +126,42 @@ class InterestOut(BaseModel):
 
 
 class ClubCreate(BaseModel):
-    name: str
-    description: str | None = None
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=1000)
     category_id: str | None = None
-    city: str | None = None
-    location: str | None = None
-    website_url: str | None = None
+    city: str | None = Field(None, max_length=100)
+    location: str | None = Field(None, max_length=255)
+    website_url: str | None = Field(None, max_length=500)
     is_active: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_strip_non_empty(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Name cannot be empty.")
+        return s
+
+    @field_validator("description", "city", "location")
+    @classmethod
+    def optional_strip(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+    @field_validator("website_url")
+    @classmethod
+    def website_url_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("website_url must be an http(s) URL.")
+        return s
 
 
 class ClubUpdate(BaseModel):
@@ -170,16 +200,60 @@ class RecommendedClubOut(BaseModel):
 
 
 class EventCreate(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=2000)
     category_id: str | None = None
     club_id: str | None = None
-    start_time: str
-    end_time: str | None = None
-    city: str | None = None
-    location: str | None = None
+    start_time: datetime
+    end_time: datetime | None = None
+    city: str | None = Field(None, max_length=100)
+    location: str | None = Field(None, max_length=255)
     is_online: bool | None = None
-    registration_url: str | None = None
+    registration_url: str | None = Field(None, max_length=500)
+
+    @field_validator("title")
+    @classmethod
+    def title_strip_non_empty(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Title cannot be empty.")
+        return s
+
+    @field_validator("description", "city", "location")
+    @classmethod
+    def optional_strip_event(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def datetimes_utc_if_naive(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
+
+    @field_validator("registration_url")
+    @classmethod
+    def registration_url_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("registration_url must be an http(s) URL.")
+        return s
+
+    @model_validator(mode="after")
+    def end_not_before_start(self) -> "EventCreate":
+        if self.end_time is not None and self.end_time < self.start_time:
+            raise ValueError("end_time must be on or after start_time.")
+        return self
 
 
 class EventUpdate(BaseModel):
@@ -292,6 +366,15 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
     return user
+
+
+def require_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:
+    if not bool(current_user.is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+    return current_user
 
 
 def _user_to_me_out(user: models.User) -> UserMeOut:
@@ -699,8 +782,13 @@ def list_interest_categories(db: Session = Depends(get_db)):
     ]
 
 
+@app.post("/admin/clubs", response_model=ClubOut, status_code=status.HTTP_201_CREATED)
 @app.post("/clubs", response_model=ClubOut, status_code=status.HTTP_201_CREATED)
-def create_club(payload: ClubCreate, db: Session = Depends(get_db)):
+def create_club(
+    payload: ClubCreate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
     category_uuid: uuid.UUID | None = None
     if payload.category_id is not None:
         try:
@@ -991,8 +1079,13 @@ def delete_club(club_id: str, db: Session = Depends(get_db)):
     return
 
 
+@app.post("/admin/events", response_model=EventOut, status_code=status.HTTP_201_CREATED)
 @app.post("/events", response_model=EventOut, status_code=status.HTTP_201_CREATED)
-def create_event(payload: EventCreate, db: Session = Depends(get_db)):
+def create_event(
+    payload: EventCreate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
     category_uuid: uuid.UUID | None = None
     club_uuid: uuid.UUID | None = None
 
