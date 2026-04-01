@@ -17,6 +17,7 @@ class User(Base):
 
     # Account status
     is_active = Column(Boolean, nullable=False, server_default="true")
+    is_admin = Column(Boolean, nullable=False, server_default="false")
 
     # Student profile data
     first_name = Column(String(100), nullable=True)

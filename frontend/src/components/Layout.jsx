@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 
 export default function Layout() {
-  const { isAuthed, logout } = useAuth();
+  const { isAuthed, isAdmin, authReady, logout } = useAuth();
   const navigate = useNavigate();
   const currentYear = new Date().getFullYear();
 
@@ -49,6 +49,9 @@ export default function Layout() {
                 <NavLink to="/results" style={linkStyle}>Results</NavLink>
                 <NavLink to="/dashboard" style={linkStyle}>Dashboard</NavLink>
                 <NavLink to="/interests" style={linkStyle}>Interests</NavLink>
+                {authReady && isAdmin ? (
+                  <NavLink to="/admin" style={linkStyle}>Admin</NavLink>
+                ) : null}
                 <button type="button" onClick={handleLogout} style={styles.logoutButton}>
                   Logout
                 </button>

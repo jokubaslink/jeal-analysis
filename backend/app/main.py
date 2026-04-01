@@ -95,6 +95,10 @@ class UserOut(BaseModel):
     city: str | None = None
 
 
+class UserMeOut(UserOut):
+    is_admin: bool
+
+
 class UserUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
@@ -290,6 +294,23 @@ def get_current_user(
     return user
 
 
+def _user_to_me_out(user: models.User) -> UserMeOut:
+    return UserMeOut(
+        id=str(user.id),
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        programme=user.programme,
+        year=user.year,
+        faculty=user.faculty,
+        school=user.school,
+        grade_year=user.grade_year,
+        age_group=user.age_group,
+        city=user.city,
+        is_admin=bool(user.is_admin),
+    )
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -368,7 +389,16 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    return {"message": "Login successful", "user_id": str(user.id)}
+    return {
+        "message": "Login successful",
+        "user_id": str(user.id),
+        "is_admin": bool(user.is_admin),
+    }
+
+
+@app.get("/me", response_model=UserMeOut)
+def get_me(current_user: models.User = Depends(get_current_user)):
+    return _user_to_me_out(current_user)
 
 
 @app.get("/users/{user_id}", response_model=UserOut)
