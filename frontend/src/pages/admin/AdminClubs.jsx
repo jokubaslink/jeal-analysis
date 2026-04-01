@@ -1,104 +1,10 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
+import { Alert, Button, Card, CardDescription, CardTitle, Input, Label, Select, Textarea } from "../../components/ui/index.js";
 
-const card = {
-  padding: "24px",
-  borderRadius: "20px",
-  border: "1px solid rgba(17, 24, 39, 0.08)",
-  background: "white",
-  boxShadow: "0 18px 40px rgba(15, 23, 42, 0.06)",
-};
-
-const title = {
-  margin: 0,
-  color: "#111827",
-  fontSize: "22px",
-  fontWeight: 700,
-};
-
-const subtitle = {
-  margin: "8px 0 0 0",
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: 1.55,
-};
-
-const formStyles = {
-  form: {
-    marginTop: "22px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    maxWidth: "520px",
-  },
-  field: { display: "flex", flexDirection: "column", gap: "6px" },
-  label: { color: "#111827", fontSize: "13px", fontWeight: 700 },
-  input: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-  },
-  textarea: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-    minHeight: "100px",
-    resize: "vertical",
-    fontFamily: "inherit",
-  },
-  select: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-  },
-  row: { display: "flex", alignItems: "center", gap: "10px" },
-  checkbox: { width: "18px", height: "18px", cursor: "pointer" },
-  button: {
-    marginTop: "6px",
-    padding: "12px 20px",
-    borderRadius: "999px",
-    border: "none",
-    background: "#111827",
-    color: "white",
-    fontWeight: 700,
-    fontSize: "14px",
-    cursor: "pointer",
-    alignSelf: "flex-start",
-  },
-  error: {
-    margin: 0,
-    color: "#b91c1c",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: "10px",
-    padding: "10px 12px",
-  },
-  success: {
-    margin: 0,
-    color: "#166534",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
-    borderRadius: "10px",
-    padding: "10px 12px",
-  },
-  hint: { margin: 0, fontSize: "12px", color: "#6b7280" },
-};
+const fieldClass = "flex flex-col gap-[length:var(--space-2)]";
+const hintClass = "m-0 text-[length:var(--font-size-caption)] text-[var(--color-ink-subtle)]";
+const formMax = "max-w-[520px]";
 
 export default function AdminClubs() {
   const [categories, setCategories] = useState([]);
@@ -187,20 +93,23 @@ export default function AdminClubs() {
   }
 
   return (
-    <div style={card}>
-      <h2 style={title}>Clubs management</h2>
-      <p style={subtitle}>Create a new club. Only administrators can submit this form.</p>
+    <Card className={formMax}>
+      <CardTitle>Clubs management</CardTitle>
+      <CardDescription>Create a new club. Only administrators can submit this form.</CardDescription>
 
-      {loadError ? <p style={formStyles.error}>{loadError}</p> : null}
+      {loadError ? (
+        <div className="mt-[length:var(--space-7)]">
+          <Alert variant="error">{loadError}</Alert>
+        </div>
+      ) : null}
 
-      <form style={formStyles.form} onSubmit={handleSubmit}>
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="club-name">
-            Name <span style={{ color: "#b91c1c" }}>*</span>
-          </label>
-          <input
+      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit}>
+        <div className={fieldClass}>
+          <Label htmlFor="club-name">
+            Name <span className="text-[var(--color-error-text)]">*</span>
+          </Label>
+          <Input
             id="club-name"
-            style={formStyles.input}
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={255}
@@ -209,46 +118,34 @@ export default function AdminClubs() {
           />
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="club-description">
-            Description
-          </label>
-          <textarea
+        <div className={fieldClass}>
+          <Label htmlFor="club-description">Description</Label>
+          <Textarea
             id="club-description"
-            style={formStyles.textarea}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={1000}
+            rows={5}
           />
-          <p style={formStyles.hint}>Up to 1000 characters.</p>
+          <p className={hintClass}>Up to 1000 characters.</p>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="club-category">
-            Interest category
-          </label>
-          <select
-            id="club-category"
-            style={formStyles.select}
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-          >
+        <div className={fieldClass}>
+          <Label htmlFor="club-category">Interest category</Label>
+          <Select id="club-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">— None —</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="club-city">
-            City
-          </label>
-          <input
+        <div className={fieldClass}>
+          <Label htmlFor="club-city">City</Label>
+          <Input
             id="club-city"
-            style={formStyles.input}
             value={city}
             onChange={(e) => setCity(e.target.value)}
             maxLength={100}
@@ -256,26 +153,15 @@ export default function AdminClubs() {
           />
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="club-location">
-            Location / venue
-          </label>
-          <input
-            id="club-location"
-            style={formStyles.input}
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            maxLength={255}
-          />
+        <div className={fieldClass}>
+          <Label htmlFor="club-location">Location / venue</Label>
+          <Input id="club-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={255} />
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="club-website">
-            Website URL
-          </label>
-          <input
+        <div className={fieldClass}>
+          <Label htmlFor="club-website">Website URL</Label>
+          <Input
             id="club-website"
-            style={formStyles.input}
             type="url"
             placeholder="https://"
             value={websiteUrl}
@@ -284,34 +170,26 @@ export default function AdminClubs() {
           />
         </div>
 
-        <div style={formStyles.row}>
+        <div className="flex items-center gap-[length:var(--space-4)]">
           <input
             id="club-active"
             type="checkbox"
-            style={formStyles.checkbox}
+            className="h-[18px] w-[18px] cursor-pointer accent-[var(--color-ink)]"
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
           />
-          <label style={{ ...formStyles.label, fontWeight: 600, cursor: "pointer" }} htmlFor="club-active">
+          <Label htmlFor="club-active" className="mb-0 cursor-pointer font-semibold">
             Active (visible in listings)
-          </label>
+          </Label>
         </div>
 
-        {submitError ? <p style={formStyles.error}>{submitError}</p> : null}
-        {successMessage ? <p style={formStyles.success}>{successMessage}</p> : null}
+        {submitError ? <Alert variant="error">{submitError}</Alert> : null}
+        {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
 
-        <button
-          type="submit"
-          style={{
-            ...formStyles.button,
-            opacity: isSubmitting ? 0.7 : 1,
-            cursor: isSubmitting ? "default" : "pointer",
-          }}
-          disabled={isSubmitting || !!loadError}
-        >
+        <Button type="submit" disabled={isSubmitting || !!loadError}>
           {isSubmitting ? "Creating…" : "Create club"}
-        </button>
+        </Button>
       </form>
-    </div>
+    </Card>
   );
 }

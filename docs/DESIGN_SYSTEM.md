@@ -162,11 +162,33 @@ Use on elevated surfaces (cards, auth panel).
 
 ---
 
+## React UI components (Tailwind)
+
+Shared building blocks live under **`frontend/src/components/ui/`** and are re-exported from **`index.js`**:
+
+| Component | Role |
+|-----------|------|
+| `Button` | Variants: `primary`, `secondary`, `ghost` — pill radius, token colors |
+| `Input` | Text-like inputs; `forwardRef` for forms |
+| `Select` | Native `<select>` with shared field chrome |
+| `Textarea` | Multi-line field with shared chrome |
+| `Label` | Bold small label text |
+| `Card`, `CardTitle`, `CardDescription` | Elevated panel + heading helpers |
+| `Alert` | `success` / `error` banners |
+
+Layout uses **Tailwind v4** (`@import "tailwindcss"` in `index.css`, `@tailwindcss/vite` plugin). Prefer **`cn()`** from `frontend/src/lib/cn.js` to merge classes.
+
+Example: `import { Button, Input, Card } from "../components/ui/index.js";`
+
+---
+
 ## Related files
 
 | File | Role |
 |------|------|
 | `frontend/src/styles/design-tokens.css` | CSS variables (imported from `main.jsx`) |
-| `frontend/src/index.css` | Global base styles using tokens where wired |
+| `frontend/src/index.css` | Tailwind entry + global base styles |
+| `frontend/vite.config.js` | `tailwindcss()` Vite plugin |
 | `frontend/src/components/Layout.jsx` | Header, nav, page shell |
+| `frontend/src/components/ui/*` | Reusable UI primitives |
 | `frontend/public/style-guide.html` | Visual gallery (URL: `/style-guide.html`) |

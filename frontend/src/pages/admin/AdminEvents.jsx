@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
+import { Alert, Button, Card, CardDescription, CardTitle, Input, Label, Select, Textarea } from "../../components/ui/index.js";
 
 /** Parse `datetime-local` value as local wall time and return ISO 8601 UTC string. */
 function datetimeLocalToIso(value) {
@@ -14,104 +15,9 @@ function datetimeLocalToIso(value) {
   return local.toISOString();
 }
 
-const card = {
-  padding: "24px",
-  borderRadius: "20px",
-  border: "1px solid rgba(17, 24, 39, 0.08)",
-  background: "white",
-  boxShadow: "0 18px 40px rgba(15, 23, 42, 0.06)",
-};
-
-const title = {
-  margin: 0,
-  color: "#111827",
-  fontSize: "22px",
-  fontWeight: 700,
-};
-
-const subtitle = {
-  margin: "8px 0 0 0",
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: 1.55,
-};
-
-const formStyles = {
-  form: {
-    marginTop: "22px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    maxWidth: "520px",
-  },
-  field: { display: "flex", flexDirection: "column", gap: "6px" },
-  label: { color: "#111827", fontSize: "13px", fontWeight: 700 },
-  input: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-  },
-  textarea: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-    minHeight: "100px",
-    resize: "vertical",
-    fontFamily: "inherit",
-  },
-  select: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-  },
-  row: { display: "flex", alignItems: "center", gap: "10px" },
-  checkbox: { width: "18px", height: "18px", cursor: "pointer" },
-  button: {
-    marginTop: "6px",
-    padding: "12px 20px",
-    borderRadius: "999px",
-    border: "none",
-    background: "#111827",
-    color: "white",
-    fontWeight: 700,
-    fontSize: "14px",
-    cursor: "pointer",
-    alignSelf: "flex-start",
-  },
-  error: {
-    margin: 0,
-    color: "#b91c1c",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: "10px",
-    padding: "10px 12px",
-  },
-  success: {
-    margin: 0,
-    color: "#166534",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
-    borderRadius: "10px",
-    padding: "10px 12px",
-  },
-  hint: { margin: 0, fontSize: "12px", color: "#6b7280" },
-};
+const fieldClass = "flex flex-col gap-[length:var(--space-2)]";
+const hintClass = "m-0 text-[length:var(--font-size-caption)] text-[var(--color-ink-subtle)]";
+const formMax = "max-w-[520px]";
 
 export default function AdminEvents() {
   const [categories, setCategories] = useState([]);
@@ -240,20 +146,25 @@ export default function AdminEvents() {
   }
 
   return (
-    <div style={card}>
-      <h2 style={title}>Events management</h2>
-      <p style={subtitle}>Create a new event. Times use your local timezone and are sent to the API in UTC.</p>
+    <Card className={formMax}>
+      <CardTitle>Events management</CardTitle>
+      <CardDescription>
+        Create a new event. Times use your local timezone and are sent to the API in UTC.
+      </CardDescription>
 
-      {loadError ? <p style={formStyles.error}>{loadError}</p> : null}
+      {loadError ? (
+        <div className="mt-[length:var(--space-7)]">
+          <Alert variant="error">{loadError}</Alert>
+        </div>
+      ) : null}
 
-      <form style={formStyles.form} onSubmit={handleSubmit}>
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-title">
-            Title <span style={{ color: "#b91c1c" }}>*</span>
-          </label>
-          <input
+      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit}>
+        <div className={fieldClass}>
+          <Label htmlFor="event-title">
+            Title <span className="text-[var(--color-error-text)]">*</span>
+          </Label>
+          <Input
             id="event-title"
-            style={formStyles.input}
             value={eventTitle}
             onChange={(e) => setEventTitle(e.target.value)}
             maxLength={255}
@@ -262,65 +173,48 @@ export default function AdminEvents() {
           />
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-description">
-            Description
-          </label>
-          <textarea
+        <div className={fieldClass}>
+          <Label htmlFor="event-description">Description</Label>
+          <Textarea
             id="event-description"
-            style={formStyles.textarea}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={2000}
+            rows={5}
           />
-          <p style={formStyles.hint}>Up to 2000 characters.</p>
+          <p className={hintClass}>Up to 2000 characters.</p>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-category">
-            Interest category
-          </label>
-          <select
-            id="event-category"
-            style={formStyles.select}
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-          >
+        <div className={fieldClass}>
+          <Label htmlFor="event-category">Interest category</Label>
+          <Select id="event-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">— None —</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-club">
-            Club
-          </label>
-          <select
-            id="event-club"
-            style={formStyles.select}
-            value={clubId}
-            onChange={(e) => setClubId(e.target.value)}
-          >
+        <div className={fieldClass}>
+          <Label htmlFor="event-club">Club</Label>
+          <Select id="event-club" value={clubId} onChange={(e) => setClubId(e.target.value)}>
             <option value="">— None —</option>
             {clubs.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-start">
-            Start <span style={{ color: "#b91c1c" }}>*</span>
-          </label>
-          <input
+        <div className={fieldClass}>
+          <Label htmlFor="event-start">
+            Start <span className="text-[var(--color-error-text)]">*</span>
+          </Label>
+          <Input
             id="event-start"
-            style={formStyles.input}
             type="datetime-local"
             value={startLocal}
             onChange={(e) => setStartLocal(e.target.value)}
@@ -328,27 +222,16 @@ export default function AdminEvents() {
           />
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-end">
-            End
-          </label>
-          <input
-            id="event-end"
-            style={formStyles.input}
-            type="datetime-local"
-            value={endLocal}
-            onChange={(e) => setEndLocal(e.target.value)}
-          />
-          <p style={formStyles.hint}>Optional. Must be on or after start.</p>
+        <div className={fieldClass}>
+          <Label htmlFor="event-end">End</Label>
+          <Input id="event-end" type="datetime-local" value={endLocal} onChange={(e) => setEndLocal(e.target.value)} />
+          <p className={hintClass}>Optional. Must be on or after start.</p>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-city">
-            City
-          </label>
-          <input
+        <div className={fieldClass}>
+          <Label htmlFor="event-city">City</Label>
+          <Input
             id="event-city"
-            style={formStyles.input}
             value={city}
             onChange={(e) => setCity(e.target.value)}
             maxLength={100}
@@ -356,39 +239,28 @@ export default function AdminEvents() {
           />
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-location">
-            Location
-          </label>
-          <input
-            id="event-location"
-            style={formStyles.input}
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            maxLength={255}
-          />
+        <div className={fieldClass}>
+          <Label htmlFor="event-location">Location</Label>
+          <Input id="event-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={255} />
         </div>
 
-        <div style={formStyles.row}>
+        <div className="flex items-center gap-[length:var(--space-4)]">
           <input
             id="event-online"
             type="checkbox"
-            style={formStyles.checkbox}
+            className="h-[18px] w-[18px] cursor-pointer accent-[var(--color-ink)]"
             checked={isOnline}
             onChange={(e) => setIsOnline(e.target.checked)}
           />
-          <label style={{ ...formStyles.label, fontWeight: 600, cursor: "pointer" }} htmlFor="event-online">
+          <Label htmlFor="event-online" className="mb-0 cursor-pointer font-semibold">
             Online event
-          </label>
+          </Label>
         </div>
 
-        <div style={formStyles.field}>
-          <label style={formStyles.label} htmlFor="event-registration">
-            Registration URL
-          </label>
-          <input
+        <div className={fieldClass}>
+          <Label htmlFor="event-registration">Registration URL</Label>
+          <Input
             id="event-registration"
-            style={formStyles.input}
             type="url"
             placeholder="https://"
             value={registrationUrl}
@@ -397,21 +269,13 @@ export default function AdminEvents() {
           />
         </div>
 
-        {submitError ? <p style={formStyles.error}>{submitError}</p> : null}
-        {successMessage ? <p style={formStyles.success}>{successMessage}</p> : null}
+        {submitError ? <Alert variant="error">{submitError}</Alert> : null}
+        {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
 
-        <button
-          type="submit"
-          style={{
-            ...formStyles.button,
-            opacity: isSubmitting ? 0.7 : 1,
-            cursor: isSubmitting ? "default" : "pointer",
-          }}
-          disabled={isSubmitting || !!loadError}
-        >
+        <Button type="submit" disabled={isSubmitting || !!loadError}>
           {isSubmitting ? "Creating…" : "Create event"}
-        </button>
+        </Button>
       </form>
-    </div>
+    </Card>
   );
 }

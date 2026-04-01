@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
+import { Alert, Button, Card, Input, Label } from "../components/ui/index.js";
 
 export default function Login() {
   const { login } = useAuth();
@@ -36,176 +37,65 @@ export default function Login() {
   }
 
   return (
-    <div style={styles.container}>
-      <form style={styles.card} onSubmit={handleSubmit}>
-        <div style={styles.header}>
-          <p style={styles.eyebrow}>Welcome back</p>
-          <h2 style={styles.title}>Log in to JEAL</h2>
-          <p style={styles.subtitle}>Access your personalized recommendations and profile.</p>
-        </div>
+    <div className="flex min-h-[70vh] items-center justify-center">
+      <Card className="w-full max-w-[420px] gap-[length:var(--space-6)] border-[rgba(15,23,42,0.08)] p-8 shadow-[var(--shadow-card-strong)] backdrop-blur-[8px] [background:radial-gradient(circle_at_top_left,rgba(190,242,100,0.22),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,250,251,0.98))]">
+        <form className="flex flex-col gap-[length:var(--space-6)]" onSubmit={handleSubmit}>
+          <div className="mb-1 flex flex-col gap-[length:var(--space-2)]">
+            <p className="m-0 text-[length:var(--font-size-caption)] font-bold uppercase tracking-[var(--letter-spacing-ui)] text-[var(--color-brand-green)]">
+              Welcome back
+            </p>
+            <h2 className="m-0 text-[length:var(--font-size-h1)] font-bold leading-none text-[var(--color-ink)]">
+              Log in to JEAL
+            </h2>
+            <p className="m-0 text-[length:var(--font-size-body)] text-[var(--color-ink-muted)]">
+              Access your personalized recommendations and profile.
+            </p>
+          </div>
 
-        <div style={styles.field}>
-          <label style={styles.label} htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            style={styles.input}
-            placeholder="you@example.com"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-          />
-        </div>
+          <div className="flex flex-col gap-[length:var(--space-2)]">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              placeholder="you@example.com"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
 
-        <div style={styles.field}>
-          <label style={styles.label} htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            style={styles.input}
-            placeholder="••••••••"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </div>
+          <div className="flex flex-col gap-[length:var(--space-2)]">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              placeholder="••••••••"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
 
-        {errorMessage ? <p style={styles.error}>{errorMessage}</p> : null}
+          {errorMessage ? <Alert variant="error">{errorMessage}</Alert> : null}
 
-        <button
-          style={{
-            ...styles.button,
-            opacity: isSubmitting ? 0.7 : 1,
-            cursor: isSubmitting ? "default" : "pointer",
-          }}
-          type="submit"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? "Logging in..." : "Log in"}
-        </button>
+          <Button type="submit" disabled={isSubmitting} className="mt-1">
+            {isSubmitting ? "Logging in..." : "Log in"}
+          </Button>
 
-        <div style={styles.footer}>
-          <span style={styles.footerText}>New to JEAL?</span>
-          <button type="button" onClick={() => navigate("/register")} style={styles.linkButton}>
-            Create an account
-          </button>
-        </div>
-      </form>
+          <div className="mt-1 flex items-center justify-center gap-2">
+            <span className="m-0 text-[length:var(--font-size-body)] text-[var(--color-ink-muted)]">New to JEAL?</span>
+            <button
+              type="button"
+              onClick={() => navigate("/register")}
+              className="cursor-pointer border-none bg-transparent p-0 text-[length:var(--font-size-body)] font-bold text-[var(--color-ink)] underline"
+            >
+              Create an account
+            </button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    minHeight: "70vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "14px",
-    width: "100%",
-    maxWidth: "420px",
-    padding: "30px",
-    borderRadius: "24px",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    background:
-      "radial-gradient(circle at top left, rgba(190, 242, 100, 0.22), transparent 38%), linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249, 250, 251, 0.98) 100%)",
-    boxShadow: "0 24px 60px rgba(15, 23, 42, 0.1)",
-    backdropFilter: "blur(8px)",
-  },
-  header: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-    marginBottom: "4px",
-  },
-  eyebrow: {
-    margin: 0,
-    fontSize: "12px",
-    fontWeight: 700,
-    letterSpacing: "0.14em",
-    textTransform: "uppercase",
-    color: "#3f6212",
-  },
-  title: {
-    margin: 0,
-    color: "#111827",
-    fontSize: "30px",
-    lineHeight: 1,
-  },
-  subtitle: {
-    margin: 0,
-    color: "#4b5563",
-    fontSize: "14px",
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
-  label: {
-    color: "#111827",
-    fontSize: "13px",
-    fontWeight: 700,
-  },
-  input: {
-    padding: "12px 14px",
-    borderRadius: "12px",
-    border: "1px solid #d1d5db",
-    outline: "none",
-    color: "#111827",
-    background: "rgba(255, 255, 255, 0.92)",
-    fontSize: "14px",
-  },
-  button: {
-    marginTop: "4px",
-    padding: "12px 16px",
-    borderRadius: "999px",
-    border: "none",
-    background: "#111827",
-    color: "white",
-    fontWeight: 700,
-    fontSize: "14px",
-  },
-  error: {
-    margin: 0,
-    color: "#b91c1c",
-    fontSize: "13px",
-    fontWeight: 700,
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: "10px",
-    padding: "10px 12px",
-  },
-  footer: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: "8px",
-    marginTop: "4px",
-  },
-  footerText: {
-    margin: 0,
-    color: "#4b5563",
-    fontSize: "14px",
-  },
-  linkButton: {
-    border: "none",
-    background: "transparent",
-    color: "#111827",
-    cursor: "pointer",
-    fontWeight: 700,
-    textDecoration: "underline",
-    padding: 0,
-    fontSize: "14px",
-  },
-};
