@@ -1,5 +1,7 @@
 export const ONBOARDING_SELECTIONS_STORAGE_KEY =
   "jeal_onboarding_selected_interest_ids";
+export const ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY =
+  "jeal_onboarding_quiz_answer_option_ids";
 
 function isStoredInterestId(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -31,4 +33,33 @@ export function writeOnboardingSelections(selectedIds) {
 
 export function clearOnboardingSelections() {
   localStorage.removeItem(ONBOARDING_SELECTIONS_STORAGE_KEY);
+}
+
+function isStoredOptionId(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function readOnboardingQuizAnswers() {
+  const raw = localStorage.getItem(ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isStoredOptionId) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeOnboardingQuizAnswers(optionIds) {
+  localStorage.setItem(
+    ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY,
+    JSON.stringify(optionIds)
+  );
+}
+
+export function clearOnboardingQuizAnswers() {
+  localStorage.removeItem(ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY);
 }

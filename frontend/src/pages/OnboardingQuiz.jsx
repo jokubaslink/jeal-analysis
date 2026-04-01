@@ -4,9 +4,17 @@ import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import {
   clearOnboardingSelections,
+  clearOnboardingQuizAnswers,
+  readOnboardingQuizAnswers,
   readOnboardingSelections,
+  writeOnboardingQuizAnswers,
   writeOnboardingSelections,
 } from "../onboarding/storage.js";
+import {
+  ONBOARDING_QUIZ_QUESTIONS,
+  scoreQuizAnswers,
+  suggestInterestIdsFromCategoryScores,
+} from "../onboarding/quizEngine.js";
 
 export default function OnboardingQuiz() {
   const navigate = useNavigate();
@@ -21,6 +29,7 @@ export default function OnboardingQuiz() {
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoadedSavedSelections, setHasLoadedSavedSelections] = useState(false);
+  const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState({});
 
   useEffect(() => {
     let ignore = false;
@@ -107,6 +116,28 @@ export default function OnboardingQuiz() {
     writeOnboardingSelections(Array.from(selectedIds));
   }, [selectedIds]);
 
+  useEffect(() => {
+    const savedAnswerOptionIds = readOnboardingQuizAnswers();
+    if (savedAnswerOptionIds.length === 0) {
+      return;
+    }
+
+    const answerMap = {};
+    ONBOARDING_QUIZ_QUESTIONS.forEach((question) => {
+      const selectedOptionId = question.options.find((option) =>
+        savedAnswerOptionIds.includes(option.id)
+      )?.id;
+      if (selectedOptionId) {
+        answerMap[question.id] = selectedOptionId;
+      }
+    });
+    setQuizAnswersByQuestionId(answerMap);
+  }, []);
+
+  useEffect(() => {
+    writeOnboardingQuizAnswers(Object.values(quizAnswersByQuestionId));
+  }, [quizAnswersByQuestionId]);
+
   const steps = useMemo(
     () =>
       categories
@@ -138,6 +169,20 @@ export default function OnboardingQuiz() {
   const currentStepHasSelection = currentStepSelections.length > 0;
   const isLastStep = totalSteps > 0 && currentStep === totalSteps - 1;
   const hasAnySelection = selectedIds.size > 0;
+  const answeredOptionIds = Object.values(quizAnswersByQuestionId);
+  const quizCategoryScores = useMemo(
+    () => scoreQuizAnswers(answeredOptionIds),
+    [answeredOptionIds]
+  );
+  const suggestedInterestIds = useMemo(
+    () =>
+      suggestInterestIdsFromCategoryScores(
+        quizCategoryScores,
+        categories,
+        interests
+      ),
+    [categories, interests, quizCategoryScores]
+  );
 
   const handleToggleInterest = (interestId) => {
     setSaveMessage("");
@@ -178,6 +223,29 @@ export default function OnboardingQuiz() {
     });
   };
 
+  const handleSelectQuestionOption = (questionId, optionId) => {
+    setSaveMessage("");
+    setSaveError("");
+    setQuizAnswersByQuestionId((previous) => ({
+      ...previous,
+      [questionId]: optionId,
+    }));
+  };
+
+  const handleApplyQuizSuggestions = () => {
+    if (suggestedInterestIds.length === 0) {
+      setSaveError("Answer quiz questions to generate interest suggestions.");
+      return;
+    }
+    setSaveError("");
+    setSaveMessage("Quiz suggestions applied to your interests.");
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      suggestedInterestIds.forEach((interestId) => next.add(interestId));
+      return next;
+    });
+  };
+
   const saveSelections = useCallback(async () => {
     if (!userId || !hasAnySelection) {
       return;
@@ -199,6 +267,7 @@ export default function OnboardingQuiz() {
       });
 
       clearOnboardingSelections();
+      clearOnboardingQuizAnswers();
       setSaveMessage("Your interests are saved. Redirecting to your results...");
       window.setTimeout(() => navigate("/results", { replace: true }), 900);
     } catch (saveSelectionsError) {
@@ -319,6 +388,41 @@ export default function OnboardingQuiz() {
               </span>
             </div>
           </div>
+
+          <section style={quizQuestionSection}>
+            <div style={quizQuestionHeader}>
+              <p style={quizQuestionTitle}>Quick preference questions</p>
+              <button type="button" onClick={handleApplyQuizSuggestions} style={ghostButton}>
+                Apply suggestions
+              </button>
+            </div>
+            <div style={quizQuestionGrid}>
+              {ONBOARDING_QUIZ_QUESTIONS.map((question) => (
+                <div key={question.id} style={quizQuestionCard}>
+                  <p style={quizPrompt}>{question.prompt}</p>
+                  <div style={quizOptionList}>
+                    {question.options.map((option) => {
+                      const isSelected = quizAnswersByQuestionId[question.id] === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => handleSelectQuestionOption(question.id, option.id)}
+                          style={{
+                            ...quizOptionButton,
+                            borderColor: isSelected ? "#113c2d" : "rgba(17, 24, 39, 0.12)",
+                            backgroundColor: isSelected ? "#ecfccb" : "white",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
           <div style={progressTrack}>
             <div style={{ ...progressFill, width: `${progressValue}%` }} />
@@ -568,6 +672,67 @@ const progressTrack = {
   background: "rgba(17, 24, 39, 0.08)",
   overflow: "hidden",
   marginBottom: "26px",
+};
+
+const quizQuestionSection = {
+  marginBottom: "20px",
+  padding: "16px",
+  borderRadius: "18px",
+  border: "1px solid rgba(17, 24, 39, 0.1)",
+  background: "rgba(255, 255, 255, 0.75)",
+};
+
+const quizQuestionHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  alignItems: "center",
+  flexWrap: "wrap",
+  marginBottom: "12px",
+};
+
+const quizQuestionTitle = {
+  margin: 0,
+  fontWeight: 700,
+  color: "#111827",
+  fontSize: "14px",
+};
+
+const quizQuestionGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "10px",
+};
+
+const quizQuestionCard = {
+  border: "1px solid rgba(17, 24, 39, 0.08)",
+  borderRadius: "14px",
+  padding: "10px",
+  background: "white",
+};
+
+const quizPrompt = {
+  margin: "0 0 8px 0",
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "#1f2937",
+};
+
+const quizOptionList = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const quizOptionButton = {
+  border: "1px solid rgba(17, 24, 39, 0.12)",
+  borderRadius: "999px",
+  background: "white",
+  color: "#111827",
+  fontSize: "12px",
+  fontWeight: 600,
+  padding: "8px 10px",
+  textAlign: "left",
 };
 
 const progressFill = {
