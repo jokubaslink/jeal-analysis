@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JEAL — UI style guide</title>
+    <style>
+      /**
+       * Served at /style-guide.html when running Vite (npm run dev).
+       * Keep :root in sync with frontend/src/styles/design-tokens.css
+       */
+      :root {
+        --color-ink: #111827;
+        --color-ink-muted: #4b5563;
+        --color-ink-subtle: #6b7280;
+        --color-surface: #ffffff;
+        --color-black: #000000;
+        --color-brand-lime: #bef264;
+        --color-brand-lime-soft: rgba(190, 242, 100, 0.22);
+        --color-brand-green: #3f6212;
+        --color-border: rgba(17, 24, 39, 0.08);
+        --color-border-medium: rgba(17, 24, 39, 0.12);
+        --color-border-strong: rgba(17, 24, 39, 0.14);
+        --color-border-input: #d1d5db;
+        --color-bg-page-top: #f8fafc;
+        --color-bg-page-bottom: #f0fdf4;
+        --color-success-text: #166534;
+        --color-success-bg: #f0fdf4;
+        --color-success-border: #bbf7d0;
+        --color-error-text: #b91c1c;
+        --color-error-bg: #fef2f2;
+        --color-error-border: #fecaca;
+        --color-shadow: rgba(15, 23, 42, 0.06);
+        --color-shadow-strong: rgba(15, 23, 42, 0.1);
+        --font-family-base: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+        --font-size-xs: 11px;
+        --font-size-caption: 12px;
+        --font-size-small: 13px;
+        --font-size-body: 14px;
+        --font-size-h2: 22px;
+        --font-size-h1: 30px;
+        --font-size-display: clamp(28px, 5vw, 32px);
+        --font-weight-medium: 500;
+        --font-weight-semibold: 600;
+        --font-weight-bold: 700;
+        --line-height-tight: 1.1;
+        --line-height-body: 1.5;
+        --line-height-relaxed: 1.55;
+        --letter-spacing-wide: 0.12em;
+        --space-3: 8px;
+        --space-4: 10px;
+        --space-5: 12px;
+        --space-6: 14px;
+        --space-7: 16px;
+        --space-11: 24px;
+        --space-14: 40px;
+        --radius-sm: 8px;
+        --radius-md: 10px;
+        --radius-input: 12px;
+        --radius-lg: 20px;
+        --radius-xl: 24px;
+        --radius-pill: 999px;
+        --shadow-card: 0 18px 40px var(--color-shadow);
+        --shadow-card-strong: 0 24px 60px var(--color-shadow-strong);
+        --layout-max-width: 960px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font-family-base);
+        font-size: var(--font-size-body);
+        line-height: var(--line-height-body);
+        color: var(--color-ink);
+        background: radial-gradient(
+            circle at top left,
+            var(--color-brand-lime-soft),
+            transparent 35%
+          ),
+          linear-gradient(180deg, var(--color-bg-page-top) 0%, var(--color-bg-page-bottom) 100%);
+        min-height: 100vh;
+        padding: var(--space-14) var(--space-7);
+      }
+
+      .page {
+        max-width: var(--layout-max-width);
+        margin: 0 auto;
+      }
+
+      header.doc-head {
+        margin-bottom: var(--space-14);
+        padding-bottom: var(--space-11);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .eyebrow {
+        margin: 0 0 var(--space-3) 0;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        letter-spacing: var(--letter-spacing-wide);
+        text-transform: uppercase;
+        color: var(--color-brand-green);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: var(--font-size-display);
+        line-height: var(--line-height-tight);
+        font-weight: var(--font-weight-bold);
+      }
+
+      .lede {
+        margin: var(--space-5) 0 0 0;
+        color: var(--color-ink-muted);
+        line-height: var(--line-height-relaxed);
+        max-width: 62ch;
+      }
+
+      section {
+        margin-bottom: var(--space-14);
+      }
+
+      h2 {
+        margin: 0 0 var(--space-7) 0;
+        font-size: var(--font-size-h2);
+        font-weight: var(--font-weight-bold);
+      }
+
+      h3 {
+        margin: var(--space-11) 0 var(--space-5) 0;
+        font-size: var(--font-size-body);
+        font-weight: var(--font-weight-bold);
+        color: var(--color-ink-muted);
+      }
+
+      .grid {
+        display: grid;
+        gap: var(--space-5);
+      }
+
+      .grid-swatches {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      }
+
+      .swatch {
+        border-radius: var(--radius-input);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+        background: var(--color-surface);
+        box-shadow: var(--shadow-card);
+      }
+
+      .swatch-color {
+        height: 72px;
+      }
+
+      .swatch-meta {
+        padding: var(--space-5);
+        font-size: var(--font-size-small);
+      }
+
+      .swatch-name {
+        font-weight: var(--font-weight-semibold);
+        margin: 0 0 var(--space-3) 0;
+      }
+
+      .swatch-token {
+        margin: 0;
+        font-family: ui-monospace, monospace;
+        font-size: var(--font-size-caption);
+        color: var(--color-ink-subtle);
+        word-break: break-all;
+      }
+
+      .type-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--space-7);
+        padding: var(--space-5) 0;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .type-label {
+        flex: 0 0 140px;
+        font-size: var(--font-size-caption);
+        color: var(--color-ink-subtle);
+        font-family: ui-monospace, monospace;
+      }
+
+      .spacing-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-7);
+        margin-bottom: var(--space-5);
+      }
+
+      .spacing-box {
+        flex-shrink: 0;
+        background: var(--color-brand-lime);
+        border-radius: var(--radius-sm);
+        opacity: 0.85;
+      }
+
+      .spacing-label {
+        font-size: var(--font-size-small);
+        color: var(--color-ink-muted);
+        font-family: ui-monospace, monospace;
+      }
+
+      .demo-card {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-card);
+        padding: var(--space-11);
+        max-width: 420px;
+      }
+
+      .btn-primary {
+        display: inline-block;
+        margin-top: var(--space-5);
+        padding: 12px 20px;
+        border: none;
+        border-radius: var(--radius-pill);
+        background: var(--color-ink);
+        color: var(--color-surface);
+        font-family: inherit;
+        font-size: var(--font-size-body);
+        font-weight: var(--font-weight-bold);
+        cursor: pointer;
+      }
+
+      .btn-primary:hover {
+        opacity: 0.92;
+      }
+
+      .btn-secondary {
+        display: inline-block;
+        margin-top: var(--space-5);
+        margin-left: var(--space-5);
+        padding: 8px 14px;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-surface);
+        color: var(--color-ink);
+        font-family: inherit;
+        font-size: var(--font-size-body);
+        font-weight: var(--font-weight-semibold);
+        cursor: pointer;
+      }
+
+      .nav-pill {
+        display: inline-block;
+        padding: 8px 14px;
+        border-radius: var(--radius-pill);
+        background: rgba(17, 24, 39, 0.08);
+        border: 1px solid var(--color-border-medium);
+        font-weight: var(--font-weight-semibold);
+        font-size: var(--font-size-body);
+      }
+
+      .demo-input {
+        width: 100%;
+        max-width: 320px;
+        padding: 12px 14px;
+        border-radius: var(--radius-input);
+        border: 1px solid var(--color-border-input);
+        font-family: inherit;
+        font-size: var(--font-size-body);
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--color-ink);
+      }
+
+      .demo-input:focus-visible {
+        outline: 2px solid var(--color-brand-green);
+        outline-offset: 2px;
+      }
+
+      .alert {
+        padding: 10px 12px;
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-small);
+        font-weight: var(--font-weight-bold);
+        margin-top: var(--space-5);
+      }
+
+      .alert-success {
+        color: var(--color-success-text);
+        background: var(--color-success-bg);
+        border: 1px solid var(--color-success-border);
+      }
+
+      .alert-error {
+        color: var(--color-error-text);
+        background: var(--color-error-bg);
+        border: 1px solid var(--color-error-border);
+      }
+
+      footer.doc-foot {
+        margin-top: var(--space-14);
+        padding-top: var(--space-7);
+        border-top: 1px solid var(--color-border);
+        font-size: var(--font-size-small);
+        color: var(--color-ink-subtle);
+      }
+
+      footer.doc-foot a {
+        color: var(--color-ink-muted);
+        font-weight: var(--font-weight-semibold);
+      }
+
+      footer.doc-foot code {
+        font-size: var(--font-size-caption);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="doc-head">
+        <p class="eyebrow">Design system</p>
+        <h1>JEAL UI style guide</h1>
+        <p class="lede">
+          Color, typography, spacing, and component recipes. Tokens:
+          <code>frontend/src/styles/design-tokens.css</code>. Written spec:
+          <code>docs/DESIGN_SYSTEM.md</code> (in the repo). With the dev server running, this page is
+          <code>/style-guide.html</code>.
+        </p>
+      </header>
+
+      <section id="colors" aria-labelledby="colors-heading">
+        <h2 id="colors-heading">Color palette</h2>
+        <div class="grid grid-swatches">
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-ink)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Ink</p>
+              <p class="swatch-token">--color-ink · #111827</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-ink-muted)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Ink muted</p>
+              <p class="swatch-token">--color-ink-muted</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-ink-subtle)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Ink subtle</p>
+              <p class="swatch-token">--color-ink-subtle</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-surface); border-bottom: 1px solid var(--color-border)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Surface</p>
+              <p class="swatch-token">--color-surface</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-brand-lime)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Brand lime</p>
+              <p class="swatch-token">--color-brand-lime</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-brand-green)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Brand green</p>
+              <p class="swatch-token">--color-brand-green</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-border-input)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Input border</p>
+              <p class="swatch-token">--color-border-input</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-success-bg); border: 2px solid var(--color-success-border)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Success surface</p>
+              <p class="swatch-token">success bg / border</p>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="swatch-color" style="background: var(--color-error-bg); border: 2px solid var(--color-error-border)"></div>
+            <div class="swatch-meta">
+              <p class="swatch-name">Error surface</p>
+              <p class="swatch-token">error bg / border</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="typography" aria-labelledby="type-heading">
+        <h2 id="type-heading">Typography</h2>
+        <p style="color: var(--color-ink-muted); margin-top: 0">
+          Font stack: <code style="font-size: var(--font-size-caption)">var(--font-family-base)</code>
+        </p>
+        <div class="type-row">
+          <span class="type-label">Display</span>
+          <span style="font-size: var(--font-size-display); font-weight: var(--font-weight-bold); line-height: var(--line-height-tight)">JEAL recommendations</span>
+        </div>
+        <div class="type-row">
+          <span class="type-label">H1 · 30px</span>
+          <span style="font-size: var(--font-size-h1); font-weight: var(--font-weight-bold)">Screen title</span>
+        </div>
+        <div class="type-row">
+          <span class="type-label">H2 · 22px</span>
+          <span style="font-size: var(--font-size-h2); font-weight: var(--font-weight-bold)">Section heading</span>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Body · 14px</span>
+          <span>Default paragraph and form text. Line height 1.5 for readability.</span>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Small · 13px</span>
+          <span style="font-size: var(--font-size-small); font-weight: var(--font-weight-bold)">Label · bold</span>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Eyebrow</span>
+          <span class="eyebrow" style="display: inline; margin: 0">Uppercase label</span>
+        </div>
+      </section>
+
+      <section id="spacing" aria-labelledby="space-heading">
+        <h2 id="space-heading">Spacing system</h2>
+        <p style="color: var(--color-ink-muted); margin-top: 0">4px base. Token → value.</p>
+        <div class="spacing-row">
+          <div class="spacing-box" style="width: 4px; height: 24px"></div>
+          <span class="spacing-label">--space-1 · 4px</span>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-box" style="width: 8px; height: 24px"></div>
+          <span class="spacing-label">--space-3 · 8px</span>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-box" style="width: 12px; height: 24px"></div>
+          <span class="spacing-label">--space-5 · 12px</span>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-box" style="width: 16px; height: 24px"></div>
+          <span class="spacing-label">--space-7 · 16px</span>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-box" style="width: 24px; height: 24px"></div>
+          <span class="spacing-label">--space-11 · 24px</span>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-box" style="width: 40px; height: 24px"></div>
+          <span class="spacing-label">--space-14 · 40px</span>
+        </div>
+      </section>
+
+      <section id="components" aria-labelledby="comp-heading">
+        <h2 id="comp-heading">Buttons &amp; inputs</h2>
+        <h3>Buttons</h3>
+        <div>
+          <button type="button" class="btn-primary">Primary</button>
+          <button type="button" class="btn-secondary">Secondary</button>
+          <span class="nav-pill" style="margin-left: 12px">Nav active</span>
+        </div>
+        <h3>Input</h3>
+        <input class="demo-input" type="text" placeholder="Placeholder · 12px 14px padding, 12px radius" />
+        <h3>Card + alerts</h3>
+        <div class="demo-card">
+          <p class="eyebrow">Example</p>
+          <p style="margin: 8px 0 0 0; font-weight: var(--font-weight-bold); font-size: var(--font-size-h2)">Card title</p>
+          <p style="margin: 8px 0 0 0; color: var(--color-ink-muted); line-height: var(--line-height-relaxed)">
+            Radius 20px, shadow --shadow-card, padding 24px.
+          </p>
+          <div class="alert alert-success">Success message style</div>
+          <div class="alert alert-error">Error message style</div>
+        </div>
+      </section>
+
+      <footer class="doc-foot">
+        <p>
+          App shell: <a href="/">/</a> · Edit tokens in <code>src/styles/design-tokens.css</code> · Prose in
+          <code>docs/DESIGN_SYSTEM.md</code>
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,7 +1,8 @@
 :root {
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-normal);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -23,16 +24,17 @@ html, body, #root {
 }
 
 body {
-  color: black;
+  color: var(--color-ink);
   background:
-    radial-gradient(circle at top, rgba(190, 242, 100, 0.22), transparent 24%),
-    linear-gradient(180deg, #f4f7f1 0%, #eef2e7 100%);
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    radial-gradient(circle at top, var(--color-brand-lime-soft), transparent 24%),
+    linear-gradient(180deg, var(--color-bg-page-mid) 0%, var(--color-bg-page-alt) 100%);
+  font-family: var(--font-family-base);
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: var(--font-size-display);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-bold);
 }
 
 button {
@@ -65,7 +67,11 @@ button:focus-visible {
 @media (max-width: 768px) {
   body {
     background:
-      radial-gradient(circle at top, rgba(190, 242, 100, 0.18), transparent 22%),
-      linear-gradient(180deg, #f4f7f1 0%, #eef2e7 100%);
+      radial-gradient(
+        circle at top,
+        rgba(190, 242, 100, 0.18),
+        transparent 22%
+      ),
+      linear-gradient(180deg, var(--color-bg-page-mid) 0%, var(--color-bg-page-alt) 100%);
   }
 }
