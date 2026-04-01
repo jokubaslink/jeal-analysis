@@ -5,13 +5,13 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import {
   clearOnboardingSelections,
   clearOnboardingQuizAnswers,
-  readOnboardingQuizAnswers,
   readOnboardingSelections,
   writeOnboardingQuizAnswers,
   writeOnboardingSelections,
 } from "../onboarding/storage.js";
 import {
   ONBOARDING_QUIZ_QUESTIONS,
+  hydrateQuizAnswersFromStorage,
   scoreQuizAnswers,
   suggestInterestIdsFromCategoryScores,
 } from "../onboarding/quizEngine.js";
@@ -21,7 +21,9 @@ export default function OnboardingQuiz() {
   const { isAuthed, userId, logout } = useAuth();
   const [categories, setCategories] = useState([]);
   const [interests, setInterests] = useState([]);
-  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [selectedIds, setSelectedIds] = useState(
+    () => new Set(readOnboardingSelections())
+  );
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,7 +31,9 @@ export default function OnboardingQuiz() {
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoadedSavedSelections, setHasLoadedSavedSelections] = useState(false);
-  const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState({});
+  const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState(() =>
+    hydrateQuizAnswersFromStorage()
+  );
 
   useEffect(() => {
     let ignore = false;
@@ -115,24 +119,6 @@ export default function OnboardingQuiz() {
   useEffect(() => {
     writeOnboardingSelections(Array.from(selectedIds));
   }, [selectedIds]);
-
-  useEffect(() => {
-    const savedAnswerOptionIds = readOnboardingQuizAnswers();
-    if (savedAnswerOptionIds.length === 0) {
-      return;
-    }
-
-    const answerMap = {};
-    ONBOARDING_QUIZ_QUESTIONS.forEach((question) => {
-      const selectedOptionId = question.options.find((option) =>
-        savedAnswerOptionIds.includes(option.id)
-      )?.id;
-      if (selectedOptionId) {
-        answerMap[question.id] = selectedOptionId;
-      }
-    });
-    setQuizAnswersByQuestionId(answerMap);
-  }, []);
 
   useEffect(() => {
     writeOnboardingQuizAnswers(Object.values(quizAnswersByQuestionId));
@@ -226,10 +212,11 @@ export default function OnboardingQuiz() {
   const handleSelectQuestionOption = (questionId, optionId) => {
     setSaveMessage("");
     setSaveError("");
-    setQuizAnswersByQuestionId((previous) => ({
-      ...previous,
-      [questionId]: optionId,
-    }));
+    setQuizAnswersByQuestionId((previous) => {
+      const next = { ...previous, [questionId]: optionId };
+      writeOnboardingQuizAnswers(Object.values(next));
+      return next;
+    });
   };
 
   const handleApplyQuizSuggestions = () => {

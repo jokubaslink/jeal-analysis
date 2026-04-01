@@ -1,5 +1,6 @@
 export const ONBOARDING_SELECTIONS_STORAGE_KEY =
   "jeal_onboarding_selected_interest_ids";
+/** Persists quiz option IDs across register/login redirects (same origin, pre-auth). */
 export const ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY =
   "jeal_onboarding_quiz_answer_option_ids";
 

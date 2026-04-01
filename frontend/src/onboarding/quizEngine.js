@@ -1,3 +1,5 @@
+import { readOnboardingQuizAnswers } from "./storage.js";
+
 export const ONBOARDING_QUIZ_QUESTIONS = [
   {
     id: "q_social_style",
@@ -40,6 +42,25 @@ export const ONBOARDING_QUIZ_QUESTIONS = [
     ],
   },
 ];
+
+/** Map stored option IDs back to { [questionId]: optionId } for React state. */
+export function buildQuizAnswersMapFromOptionIds(savedOptionIds) {
+  const answerMap = {};
+  ONBOARDING_QUIZ_QUESTIONS.forEach((question) => {
+    const selectedOptionId = question.options.find((option) =>
+      savedOptionIds.includes(option.id)
+    )?.id;
+    if (selectedOptionId) {
+      answerMap[question.id] = selectedOptionId;
+    }
+  });
+  return answerMap;
+}
+
+/** Load quiz answers from localStorage synchronously (safe before auth / first paint). */
+export function hydrateQuizAnswersFromStorage() {
+  return buildQuizAnswersMapFromOptionIds(readOnboardingQuizAnswers());
+}
 
 function buildOptionIndex(questions) {
   const optionIndex = new Map();
