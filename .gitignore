@@ -1,0 +1,4 @@
+# Python bytecode cache (regenerated automatically; not needed in repo)
+__pycache__/
+*.py[cod]
+*$py.class
