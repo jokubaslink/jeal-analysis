@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
-import { Alert, EmptyState, LoadingState } from "../components/ui/index.js";
+import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 
 export default function Results() {
   const navigate = useNavigate();
@@ -13,6 +13,7 @@ export default function Results() {
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [reloadSeed, setReloadSeed] = useState(0);
 
   useEffect(() => {
     if (!userId) {
@@ -65,7 +66,7 @@ export default function Results() {
 
         if (recommendationErrors.length > 0) {
           setErrorMessage(
-            "Some recommendations could not be loaded right away. Your saved interests are shown below."
+            "We could not load all of your recommendations right now. Please try again."
           );
         }
       } catch (error) {
@@ -79,7 +80,7 @@ export default function Results() {
           return;
         }
 
-        setErrorMessage(error.message || "Failed to load your recommendations.");
+        setErrorMessage("We could not load your recommendations right now. Please try again.");
       } finally {
         if (!ignore) {
           setIsLoading(false);
@@ -92,7 +93,7 @@ export default function Results() {
     return () => {
       ignore = true;
     };
-  }, [logout, navigate, userId]);
+  }, [logout, navigate, reloadSeed, userId]);
 
   const groupedInterests = useMemo(() => {
     const groups = new Map();
@@ -137,7 +138,16 @@ export default function Results() {
 
         {errorMessage ? (
           <Alert variant="error" className="mt-[length:var(--space-7)]">
-            {errorMessage}
+            <div style={alertContent}>
+              <span>{errorMessage}</span>
+              <Button
+                variant="secondary"
+                onClick={() => setReloadSeed((current) => current + 1)}
+                className="min-w-[120px]"
+              >
+                Retry
+              </Button>
+            </div>
           </Alert>
         ) : null}
       </section>
@@ -439,4 +449,12 @@ const secondaryButton = {
   fontSize: "14px",
   padding: "12px 18px",
   cursor: "pointer",
+};
+
+const alertContent = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
 };
