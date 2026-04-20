@@ -54,8 +54,14 @@ export default function AdminHome() {
         <Link to="/admin/clubs" style={linkButton}>
           Manage clubs
         </Link>
+        <Link to="/admin/clubs/new" style={linkButton}>
+          Create club
+        </Link>
         <Link to="/admin/events" style={linkButton}>
           Manage events
+        </Link>
+        <Link to="/admin/events/new" style={linkButton}>
+          Create event
         </Link>
       </div>
     </div>

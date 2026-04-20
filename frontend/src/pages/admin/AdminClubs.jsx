@@ -1,195 +1,109 @@
 import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
-import { Alert, Button, Card, CardDescription, CardTitle, Input, Label, Select, Textarea } from "../../components/ui/index.js";
-
-const fieldClass = "flex flex-col gap-[length:var(--space-2)]";
-const hintClass = "m-0 text-[length:var(--font-size-caption)] text-[var(--color-ink-subtle)]";
-const formMax = "max-w-[520px]";
+import { Alert, Button, Card, CardDescription, CardTitle } from "../../components/ui/index.js";
 
 export default function AdminClubs() {
-  const [categories, setCategories] = useState([]);
-  const [loadError, setLoadError] = useState("");
-
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [city, setCity] = useState("");
-  const [location, setLocation] = useState("");
-  const [websiteUrl, setWebsiteUrl] = useState("");
-  const [isActive, setIsActive] = useState(true);
-
-  const [submitError, setSubmitError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const location = useLocation();
+  const [clubs, setClubs] = useState([]);
+  const [clubsError, setClubsError] = useState("");
+  const [clubsLoading, setClubsLoading] = useState(false);
+  const [flashMessage, setFlashMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
+    setClubsLoading(true);
+    setClubsError("");
+
     (async () => {
       try {
-        const list = await apiFetch("/interest-categories");
-        if (!ignore) setCategories(Array.isArray(list) ? list : []);
+        const list = await apiFetch("/clubs");
+        if (!ignore) setClubs(Array.isArray(list) ? list : []);
       } catch (e) {
-        if (!ignore) setLoadError(e.message || "Could not load categories.");
+        if (!ignore) setClubsError(e.message || "Could not load clubs.");
+      } finally {
+        if (!ignore) setClubsLoading(false);
       }
     })();
+
     return () => {
       ignore = true;
     };
   }, []);
 
-  function resetForm() {
-    setName("");
-    setDescription("");
-    setCategoryId("");
-    setCity("");
-    setLocation("");
-    setWebsiteUrl("");
-    setIsActive(true);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSubmitError("");
-    setSuccessMessage("");
-
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setSubmitError("Club name is required.");
-      return;
-    }
-
-    const urlTrim = websiteUrl.trim();
-    if (urlTrim) {
-      const low = urlTrim.toLowerCase();
-      if (!low.startsWith("http://") && !low.startsWith("https://")) {
-        setSubmitError("Website URL must start with http:// or https://.");
-        return;
-      }
-    }
-
-    const body = {
-      name: trimmedName,
-      description: description.trim() || null,
-      category_id: categoryId || null,
-      city: city.trim() || null,
-      location: location.trim() || null,
-      website_url: urlTrim || null,
-      is_active: isActive,
-    };
-
-    setIsSubmitting(true);
-    try {
-      const created = await apiFetch("/admin/clubs", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      setSuccessMessage(`Club created (id: ${created.id}).`);
-      resetForm();
-    } catch (err) {
-      setSubmitError(err.message || "Could not create club.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+  useEffect(() => {
+    setFlashMessage(location.state?.flashMessage || "");
+  }, [location.state]);
 
   return (
-    <Card className={formMax}>
-      <CardTitle>Clubs management</CardTitle>
-      <CardDescription>Create a new club. Only administrators can submit this form.</CardDescription>
+    <Card>
+      <CardTitle>All clubs</CardTitle>
+      <CardDescription>Browse every club and open a dedicated page to create or edit a club.</CardDescription>
 
-      {loadError ? (
+      <div className="mt-[length:var(--space-7)] flex justify-end">
+        <Link to="/admin/clubs/new">
+          <Button type="button">Create club</Button>
+        </Link>
+      </div>
+
+      {clubsError ? (
         <div className="mt-[length:var(--space-7)]">
-          <Alert variant="error">{loadError}</Alert>
+          <Alert variant="error">{clubsError}</Alert>
         </div>
       ) : null}
 
-      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit}>
-        <div className={fieldClass}>
-          <Label htmlFor="club-name">
-            Name <span className="text-[var(--color-error-text)]">*</span>
-          </Label>
-          <Input
-            id="club-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={255}
-            required
-            autoComplete="off"
-          />
+      {flashMessage ? (
+        <div className="mt-[length:var(--space-7)]">
+          <Alert variant="success">{flashMessage}</Alert>
         </div>
+      ) : null}
 
-        <div className={fieldClass}>
-          <Label htmlFor="club-description">Description</Label>
-          <Textarea
-            id="club-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={1000}
-            rows={5}
-          />
-          <p className={hintClass}>Up to 1000 characters.</p>
-        </div>
+      <div className="mt-[length:var(--space-10)] overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-[var(--color-line)]">
+              <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Name</th>
+              <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Category</th>
+              <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-right text-sm font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clubsLoading ? (
+              <tr>
+                <td colSpan={3} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                  Loading clubs...
+                </td>
+              </tr>
+            ) : null}
 
-        <div className={fieldClass}>
-          <Label htmlFor="club-category">Interest category</Label>
-          <Select id="club-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">— None —</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+            {!clubsLoading && clubs.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                  No clubs found.
+                </td>
+              </tr>
+            ) : null}
 
-        <div className={fieldClass}>
-          <Label htmlFor="club-city">City</Label>
-          <Input
-            id="club-city"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            maxLength={100}
-            autoComplete="address-level2"
-          />
-        </div>
-
-        <div className={fieldClass}>
-          <Label htmlFor="club-location">Location / venue</Label>
-          <Input id="club-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={255} />
-        </div>
-
-        <div className={fieldClass}>
-          <Label htmlFor="club-website">Website URL</Label>
-          <Input
-            id="club-website"
-            type="url"
-            placeholder="https://"
-            value={websiteUrl}
-            onChange={(e) => setWebsiteUrl(e.target.value)}
-            maxLength={500}
-          />
-        </div>
-
-        <div className="flex items-center gap-[length:var(--space-4)]">
-          <input
-            id="club-active"
-            type="checkbox"
-            className="h-[18px] w-[18px] cursor-pointer accent-[var(--color-ink)]"
-            checked={isActive}
-            onChange={(e) => setIsActive(e.target.checked)}
-          />
-          <Label htmlFor="club-active" className="mb-0 cursor-pointer font-semibold">
-            Active (visible in listings)
-          </Label>
-        </div>
-
-        {submitError ? <Alert variant="error">{submitError}</Alert> : null}
-        {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
-
-        <Button type="submit" disabled={isSubmitting || !!loadError}>
-          {isSubmitting ? "Creating…" : "Create club"}
-        </Button>
-      </form>
+            {!clubsLoading
+              ? clubs.map((club) => (
+                  <tr key={club.id} className="border-b border-[var(--color-line)]">
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.name}</td>
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.category_name || "—"}</td>
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
+                      <div className="flex justify-end">
+                        <Link to={`/admin/clubs/${club.id}/edit`}>
+                          <Button type="button" variant="secondary">
+                            Edit
+                          </Button>
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              : null}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

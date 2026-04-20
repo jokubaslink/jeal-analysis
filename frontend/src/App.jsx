@@ -11,7 +11,9 @@ import AdminRoute from "./components/AdminRoute.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminHome from "./pages/admin/AdminHome.jsx";
 import AdminClubs from "./pages/admin/AdminClubs.jsx";
+import AdminClubForm from "./pages/admin/AdminClubForm.jsx";
 import AdminEvents from "./pages/admin/AdminEvents.jsx";
+import AdminEventForm from "./pages/admin/AdminEventForm.jsx";
 
 export default function App() {
   return (
@@ -60,7 +62,11 @@ export default function App() {
         >
           <Route index element={<AdminHome />} />
           <Route path="clubs" element={<AdminClubs />} />
+          <Route path="clubs/new" element={<AdminClubForm />} />
+          <Route path="clubs/:clubId/edit" element={<AdminClubForm />} />
           <Route path="events" element={<AdminEvents />} />
+          <Route path="events/new" element={<AdminEventForm />} />
+          <Route path="events/:eventId/edit" element={<AdminEventForm />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -76,7 +76,7 @@ Use these credentials on the app **Login** page. This account has **`is_admin`**
 - **5. Run the backend API**
 
   ```bash
-  uvicorn backend.app.main:app --reload
+  python -m uvicorn backend.app.main:app --reload
   ```
 
   The API will be available at `http://127.0.0.1:8000`.

@@ -261,12 +261,58 @@ class EventUpdate(BaseModel):
     description: str | None = None
     category_id: str | None = None
     club_id: str | None = None
-    start_time: str | None = None
-    end_time: str | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
     city: str | None = None
     location: str | None = None
     is_online: bool | None = None
     registration_url: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def title_strip_non_empty(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            raise ValueError("Title cannot be empty.")
+        return s
+
+    @field_validator("description", "city", "location")
+    @classmethod
+    def optional_strip_event(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def datetimes_utc_if_naive(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
+
+    @field_validator("registration_url")
+    @classmethod
+    def registration_url_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("registration_url must be an http(s) URL.")
+        return s
+
+    @model_validator(mode="after")
+    def end_not_before_start(self) -> "EventUpdate":
+        if self.end_time is not None and self.start_time is not None and self.end_time < self.start_time:
+            raise ValueError("end_time must be on or after start_time.")
+        return self
 
 
 class EventOut(BaseModel):
@@ -1295,6 +1341,17 @@ def list_events(
     ]
 
 
+@app.get("/admin/events", response_model=list[EventOut])
+def list_events_admin(
+    category_id: str | None = None,
+    club_id: str | None = None,
+    city: str | None = None,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    return list_events(category_id=category_id, club_id=club_id, city=city, db=db)
+
+
 @app.get("/events/recommended", response_model=list[RecommendedEventOut])
 def list_recommended_events(
     limit: int | None = Query(default=None),
@@ -1375,6 +1432,15 @@ def get_event(event_id: str, db: Session = Depends(get_db)):
         is_online=event.is_online,
         registration_url=event.registration_url,
     )
+
+
+@app.get("/admin/events/{event_id}", response_model=EventOut)
+def get_event_admin(
+    event_id: str,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    return get_event(event_id=event_id, db=db)
 
 
 @app.patch("/events/{event_id}", response_model=EventOut)
@@ -1477,6 +1543,16 @@ def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_
         is_online=event.is_online,
         registration_url=event.registration_url,
     )
+
+
+@app.patch("/admin/events/{event_id}", response_model=EventOut)
+def update_event_admin(
+    event_id: str,
+    payload: EventUpdate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    return update_event(event_id=event_id, payload=payload, db=db)
 
 
 @app.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
