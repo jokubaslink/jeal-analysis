@@ -22,6 +22,8 @@ export default function Dashboard() {
   const [isLoadingInterests, setIsLoadingInterests] = useState(true);
   const [recommendedClubs, setRecommendedClubs] = useState([]);
   const [isLoadingRecommendedClubs, setIsLoadingRecommendedClubs] = useState(true);
+  const [recommendedEvents, setRecommendedEvents] = useState([]);
+  const [isLoadingRecommendedEvents, setIsLoadingRecommendedEvents] = useState(true);
 
   useEffect(() => {
     let ignore = false;
@@ -67,14 +69,24 @@ export default function Dashboard() {
             recommendedClubsPayload = [];
           }
 
+          let recommendedEventsPayload = [];
+          try {
+            const raw = await apiFetch("/events/recommended");
+            recommendedEventsPayload = Array.isArray(raw) ? raw : [];
+          } catch {
+            recommendedEventsPayload = [];
+          }
+
           if (!ignore) {
             setUserInterests(interestsPayload);
             setRecommendedClubs(recommendedClubsPayload);
+            setRecommendedEvents(recommendedEventsPayload);
           }
         } else {
           if (!ignore) {
             setUserInterests([]);
             setRecommendedClubs([]);
+            setRecommendedEvents([]);
           }
         }
 
@@ -91,6 +103,7 @@ export default function Dashboard() {
           setIsLoadingProfile(false);
           setIsLoadingInterests(false);
           setIsLoadingRecommendedClubs(false);
+          setIsLoadingRecommendedEvents(false);
         }
       }
     };
@@ -119,6 +132,23 @@ export default function Dashboard() {
     value !== null && value !== undefined && String(value).trim() !== ""
       ? value
       : "Not provided";
+
+  const formatEventDate = (value) => {
+    if (!value) return "Date to be announced";
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Date to be announced";
+    }
+
+    return parsed.toLocaleString([], {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const handleProfileInputChange = (event) => {
     const { name, value } = event.target;
@@ -536,6 +566,51 @@ export default function Dashboard() {
         </section>
 
         <section style={card}>
+          <div style={profileHeader}>
+            <div>
+              <h2 style={sectionTitle}>Recommended events</h2>
+              <p style={profileSubtext}>
+                Explore upcoming activities selected from the interests saved on your profile.
+              </p>
+            </div>
+          </div>
+
+          {isLoadingRecommendedEvents ? (
+            <LoadingState
+              align="left"
+              title="Loading event recommendations"
+              description="Looking for upcoming events that match your interests."
+            />
+          ) : !userId ? (
+            <EmptyState
+              align="left"
+              title="Log in to see recommended events"
+              description="Your personalized event suggestions will appear here after sign in."
+            />
+          ) : recommendedEvents.length > 0 ? (
+            <div style={recommendedEventList}>
+              {recommendedEvents.map((event) => (
+                <article key={event.id} style={recommendedEventCard}>
+                  <div style={recommendedEventHeader}>
+                    <h3 style={recommendedEventTitle}>{event.title}</h3>
+                    <p style={recommendedEventDate}>{formatEventDate(event.date || event.start_time)}</p>
+                  </div>
+                  <p style={recommendedEventDescription}>
+                    {event.description || "An upcoming activity selected from the interests you saved."}
+                  </p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              align="left"
+              title="No event recommendations yet"
+              description="Add or update your interests to get personalized upcoming activities."
+            />
+          )}
+        </section>
+
+        <section style={card}>
           <h2 style={sectionTitle}>System overview</h2>
           {usersCount !== null ? (
             <p style={bodyText}>
@@ -844,4 +919,49 @@ const categoryTag = {
   color: "#3730a3",
   fontSize: "12px",
   fontWeight: 700,
+};
+
+const recommendedEventList = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+};
+
+const recommendedEventCard = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+  padding: "16px",
+  borderRadius: "16px",
+  border: "1px solid #e5e7eb",
+  background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+};
+
+const recommendedEventHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  flexWrap: "wrap",
+};
+
+const recommendedEventTitle = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "18px",
+  fontWeight: 700,
+};
+
+const recommendedEventDate = {
+  margin: 0,
+  color: "#1d4ed8",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const recommendedEventDescription = {
+  margin: 0,
+  color: "#4b5563",
+  fontSize: "14px",
+  lineHeight: 1.5,
 };
