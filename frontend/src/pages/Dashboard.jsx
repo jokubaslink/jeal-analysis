@@ -20,6 +20,8 @@ export default function Dashboard() {
   const [profileErrorMessage, setProfileErrorMessage] = useState("");
   const [userInterests, setUserInterests] = useState([]);
   const [isLoadingInterests, setIsLoadingInterests] = useState(true);
+  const [recommendedClubs, setRecommendedClubs] = useState([]);
+  const [isLoadingRecommendedClubs, setIsLoadingRecommendedClubs] = useState(true);
 
   useEffect(() => {
     let ignore = false;
@@ -56,12 +58,23 @@ export default function Dashboard() {
           } catch {
             interestsPayload = [];
           }
+
+          let recommendedClubsPayload = [];
+          try {
+            const raw = await apiFetch("/clubs/recommended");
+            recommendedClubsPayload = Array.isArray(raw) ? raw : [];
+          } catch {
+            recommendedClubsPayload = [];
+          }
+
           if (!ignore) {
             setUserInterests(interestsPayload);
+            setRecommendedClubs(recommendedClubsPayload);
           }
         } else {
           if (!ignore) {
             setUserInterests([]);
+            setRecommendedClubs([]);
           }
         }
 
@@ -77,6 +90,7 @@ export default function Dashboard() {
         if (!ignore) {
           setIsLoadingProfile(false);
           setIsLoadingInterests(false);
+          setIsLoadingRecommendedClubs(false);
         }
       }
     };
@@ -466,6 +480,62 @@ export default function Dashboard() {
         </section>
 
         <section style={card}>
+          <div style={profileHeader}>
+            <div>
+              <h2 style={sectionTitle}>Recommended clubs</h2>
+              <p style={profileSubtext}>
+                Discover clubs that match the interests saved on your profile.
+              </p>
+            </div>
+          </div>
+
+          {isLoadingRecommendedClubs ? (
+            <LoadingState
+              align="left"
+              title="Loading club recommendations"
+              description="Finding clubs that fit your saved interests."
+            />
+          ) : !userId ? (
+            <EmptyState
+              align="left"
+              title="Log in to see recommended clubs"
+              description="Your personalized club suggestions will appear here after sign in."
+            />
+          ) : recommendedClubs.length > 0 ? (
+            <div style={recommendedClubGrid}>
+              {recommendedClubs.map((club) => {
+                const tags = [club.category_name].filter(Boolean);
+
+                return (
+                  <article key={club.id} style={recommendedClubCard}>
+                    <div style={recommendedClubContent}>
+                      <h3 style={recommendedClubTitle}>{club.name}</h3>
+                      <p style={recommendedClubDescription}>
+                        {club.description || "A club aligned with the interests you saved."}
+                      </p>
+                    </div>
+
+                    <div style={chipWrap}>
+                      {tags.map((tag) => (
+                        <span key={`${club.id}-${tag}`} style={categoryTag}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              align="left"
+              title="No club recommendations yet"
+              description="Add or update your interests to get personalized club suggestions."
+            />
+          )}
+        </section>
+
+        <section style={card}>
           <h2 style={sectionTitle}>System overview</h2>
           {usersCount !== null ? (
             <p style={bodyText}>
@@ -724,4 +794,54 @@ const interestChip = {
   color: "#111827",
   fontSize: "13px",
   fontWeight: 600,
+};
+
+const recommendedClubGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "14px",
+};
+
+const recommendedClubCard = {
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: "14px",
+  minHeight: "180px",
+  padding: "16px",
+  borderRadius: "16px",
+  border: "1px solid #e5e7eb",
+  background: "linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)",
+};
+
+const recommendedClubContent = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+};
+
+const recommendedClubTitle = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "18px",
+  fontWeight: 700,
+};
+
+const recommendedClubDescription = {
+  margin: 0,
+  color: "#4b5563",
+  fontSize: "14px",
+  lineHeight: 1.5,
+};
+
+const categoryTag = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "6px 12px",
+  borderRadius: "999px",
+  background: "#eef2ff",
+  border: "1px solid #c7d2fe",
+  color: "#3730a3",
+  fontSize: "12px",
+  fontWeight: 700,
 };
