@@ -604,8 +604,7 @@ export default function Dashboard() {
           ) : (
             <EmptyState
               align="left"
-              title="No event recommendations yet"
-              description="Add or update your interests to get personalized upcoming activities."
+              title="No events available."
             />
           )}
         </section>
