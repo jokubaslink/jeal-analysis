@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .database import SessionLocal
 from . import models
@@ -304,6 +304,11 @@ class RecommendedEventOut(BaseModel):
     score: int
 
 
+class RecommendationsOut(BaseModel):
+    clubs: list["RecommendedClubOut"]
+    events: list[RecommendedEventOut]
+
+
 class UserInterestItem(BaseModel):
     interest_id: str
     level: str | None = None
@@ -575,6 +580,129 @@ DEFAULT_RECOMMENDED_CLUBS_LIMIT = 10
 MAX_RECOMMENDED_CLUBS_LIMIT = 50
 DEFAULT_RECOMMENDED_EVENTS_LIMIT = 10
 MAX_RECOMMENDED_EVENTS_LIMIT = 50
+
+
+def _resolve_recommendation_limit(
+    raw_limit: int | None,
+    *,
+    default_limit: int,
+    max_limit: int,
+) -> int:
+    if raw_limit is None:
+        return default_limit
+
+    if raw_limit <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be a positive integer.",
+        )
+
+    return min(raw_limit, max_limit)
+
+
+def _get_category_interest_counts(user_id, db: Session) -> dict:
+    rows = (
+        db.query(models.Interest.category_id, func.count(models.Interest.id))
+        .join(models.UserInterest, models.UserInterest.interest_id == models.Interest.id)
+        .filter(models.UserInterest.user_id == user_id)
+        .group_by(models.Interest.category_id)
+        .all()
+    )
+    return {row[0]: int(row[1]) for row in rows if row[0] is not None}
+
+
+def _build_recommended_clubs(
+    category_interest_counts: dict,
+    *,
+    limit: int,
+    db: Session,
+) -> list["RecommendedClubOut"]:
+    if not category_interest_counts:
+        return []
+
+    clubs = (
+        db.query(models.Club)
+        .options(joinedload(models.Club.category))
+        .all()
+    )
+
+    scored: list[tuple[int, models.Club]] = []
+    for club in clubs:
+        score = category_interest_counts.get(club.category_id, 0)
+        if score <= 0:
+            continue
+        scored.append((score, club))
+
+    scored.sort(key=lambda x: (-x[0], (x[1].name or "").lower()))
+    top = scored[:limit]
+
+    return [
+        RecommendedClubOut(
+            id=str(c.id),
+            name=c.name,
+            description=c.description,
+            category_id=str(c.category_id) if c.category_id else None,
+            category_name=c.category.name if c.category else None,
+            city=c.city,
+            location=c.location,
+            website_url=c.website_url,
+            is_active=c.is_active,
+            score=score,
+        )
+        for score, c in top
+    ]
+
+
+def _build_recommended_events(
+    category_interest_counts: dict,
+    *,
+    limit: int,
+    db: Session,
+) -> list[RecommendedEventOut]:
+    if not category_interest_counts:
+        return []
+
+    events = (
+        db.query(models.Event)
+        .options(
+            joinedload(models.Event.category),
+            joinedload(models.Event.club),
+        )
+        .filter(models.Event.start_time > func.now())
+        .all()
+    )
+
+    scored: list[tuple[int, models.Event]] = []
+    for event in events:
+        score = category_interest_counts.get(event.category_id, 0)
+        if score <= 0:
+            continue
+        scored.append((score, event))
+
+    scored.sort(key=lambda x: (-x[0], x[1].start_time))
+    top = scored[:limit]
+
+    return [
+        RecommendedEventOut(
+            id=str(e.id),
+            title=e.title,
+            date=e.start_time.isoformat(),
+            description=e.description,
+            category=e.category.name if e.category else None,
+            category_id=str(e.category_id) if e.category_id else None,
+            category_name=e.category.name if e.category else None,
+            club_id=str(e.club_id) if e.club_id else None,
+            club_name=e.club.name if e.club else None,
+            start_time=e.start_time.isoformat(),
+            end_time=e.end_time.isoformat() if e.end_time else None,
+            city=e.city,
+            location=e.location,
+            is_online=e.is_online,
+            registration_url=e.registration_url,
+            score=score,
+        )
+        for score, e in top
+    ]
 
 
 class SimilarUserPublicOut(BaseModel):
@@ -888,72 +1016,13 @@ def list_recommended_clubs(
     Score increases when a club's category matches user interests; multiple
     interests in the same category increase the score further.
     """
-    if limit is None:
-        limit_value = DEFAULT_RECOMMENDED_CLUBS_LIMIT
-    else:
-        if limit <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="limit must be a positive integer.",
-            )
-        limit_value = min(limit, MAX_RECOMMENDED_CLUBS_LIMIT)
-
-    user_uuid = current_user.id
-
-    # Count how many interests the user has in each category
-    rows = (
-        db.query(models.Interest.category_id, func.count(models.Interest.id))
-        .join(models.UserInterest, models.UserInterest.interest_id == models.Interest.id)
-        .filter(models.UserInterest.user_id == user_uuid)
-        .group_by(models.Interest.category_id)
-        .all()
+    limit_value = _resolve_recommendation_limit(
+        limit,
+        default_limit=DEFAULT_RECOMMENDED_CLUBS_LIMIT,
+        max_limit=MAX_RECOMMENDED_CLUBS_LIMIT,
     )
-    # category_id -> interest count
-    category_interest_counts: dict = {row[0]: int(row[1]) for row in rows if row[0] is not None}
-
-    if not category_interest_counts:
-        return []
-
-    # Score clubs: score = number of interests user has in that club's category
-    clubs = (
-        db.query(models.Club)
-        .join(
-            models.InterestCategory,
-            models.Club.category_id == models.InterestCategory.id,
-            isouter=True,
-        )
-        .all()
-    )
-
-    scored: list[tuple[int, models.Club]] = []
-    for club in clubs:
-        score = category_interest_counts.get(club.category_id, 0)
-        if score <= 0:
-            continue
-        scored.append((score, club))
-
-    if not scored:
-        return []
-
-    # Sort by score desc, then name asc for stability
-    scored.sort(key=lambda x: (-x[0], (x[1].name or "").lower()))
-    top = scored[:limit_value]
-
-    return [
-        RecommendedClubOut(
-            id=str(c.id),
-            name=c.name,
-            description=c.description,
-            category_id=str(c.category_id) if c.category_id else None,
-            category_name=c.category.name if c.category else None,
-            city=c.city,
-            location=c.location,
-            website_url=c.website_url,
-            is_active=c.is_active,
-            score=score,
-        )
-        for score, c in top
-    ]
+    category_interest_counts = _get_category_interest_counts(current_user.id, db)
+    return _build_recommended_clubs(category_interest_counts, limit=limit_value, db=db)
 
 
 @app.get("/clubs/{club_id}", response_model=ClubOut)
@@ -1236,84 +1305,42 @@ def list_recommended_events(
     Recommend upcoming events to the logged-in user based on interest category overlap.
     Only events with start_time > now are considered.
     """
-    if limit is None:
-        limit_value = DEFAULT_RECOMMENDED_EVENTS_LIMIT
-    else:
-        if limit <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="limit must be a positive integer.",
-            )
-        limit_value = min(limit, MAX_RECOMMENDED_EVENTS_LIMIT)
-
-    user_uuid = current_user.id
-
-    # Count how many interests the user has in each category
-    rows = (
-        db.query(models.Interest.category_id, func.count(models.Interest.id))
-        .join(models.UserInterest, models.UserInterest.interest_id == models.Interest.id)
-        .filter(models.UserInterest.user_id == user_uuid)
-        .group_by(models.Interest.category_id)
-        .all()
+    limit_value = _resolve_recommendation_limit(
+        limit,
+        default_limit=DEFAULT_RECOMMENDED_EVENTS_LIMIT,
+        max_limit=MAX_RECOMMENDED_EVENTS_LIMIT,
     )
-    category_interest_counts: dict = {row[0]: int(row[1]) for row in rows if row[0] is not None}
+    category_interest_counts = _get_category_interest_counts(current_user.id, db)
+    return _build_recommended_events(category_interest_counts, limit=limit_value, db=db)
 
-    if not category_interest_counts:
-        return []
 
-    # Only upcoming events
-    now = func.now()
-    events = (
-        db.query(models.Event)
-        .join(
-            models.InterestCategory,
-            models.Event.category_id == models.InterestCategory.id,
-            isouter=True,
-        )
-        .join(
-            models.Club,
-            models.Event.club_id == models.Club.id,
-            isouter=True,
-        )
-        .filter(models.Event.start_time > now)
-        .all()
+@app.get("/recommendations", response_model=RecommendationsOut)
+def get_recommendations(
+    club_limit: int | None = Query(default=None),
+    event_limit: int | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return club and event recommendations together so clients can populate a dashboard
+    in one request while sharing the same interest-score lookup.
+    """
+    club_limit_value = _resolve_recommendation_limit(
+        club_limit,
+        default_limit=DEFAULT_RECOMMENDED_CLUBS_LIMIT,
+        max_limit=MAX_RECOMMENDED_CLUBS_LIMIT,
     )
+    event_limit_value = _resolve_recommendation_limit(
+        event_limit,
+        default_limit=DEFAULT_RECOMMENDED_EVENTS_LIMIT,
+        max_limit=MAX_RECOMMENDED_EVENTS_LIMIT,
+    )
+    category_interest_counts = _get_category_interest_counts(current_user.id, db)
 
-    scored: list[tuple[int, models.Event]] = []
-    for event in events:
-        score = category_interest_counts.get(event.category_id, 0)
-        if score <= 0:
-            continue
-        scored.append((score, event))
-
-    if not scored:
-        return []
-
-    # Sort by score desc, then start_time asc for timeliness
-    scored.sort(key=lambda x: (-x[0], x[1].start_time))
-    top = scored[:limit_value]
-
-    return [
-        RecommendedEventOut(
-            id=str(e.id),
-            title=e.title,
-            date=e.start_time.isoformat(),
-            description=e.description,
-            category=e.category.name if e.category else None,
-            category_id=str(e.category_id) if e.category_id else None,
-            category_name=e.category.name if e.category else None,
-            club_id=str(e.club_id) if e.club_id else None,
-            club_name=e.club.name if e.club else None,
-            start_time=e.start_time.isoformat(),
-            end_time=e.end_time.isoformat() if e.end_time else None,
-            city=e.city,
-            location=e.location,
-            is_online=e.is_online,
-            registration_url=e.registration_url,
-            score=score,
-        )
-        for score, e in top
-    ]
+    return RecommendationsOut(
+        clubs=_build_recommended_clubs(category_interest_counts, limit=club_limit_value, db=db),
+        events=_build_recommended_events(category_interest_counts, limit=event_limit_value, db=db),
+    )
 
 
 @app.get("/events/{event_id}", response_model=EventOut)

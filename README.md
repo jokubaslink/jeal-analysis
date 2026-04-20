@@ -123,6 +123,7 @@ Use these credentials on the app **Login** page. This account has **`is_admin`**
   - **Events**
     - **POST** `/events`: create event (optional `category_id`, optional `club_id`).
     - **GET** `/events`: list events, filters by `category_id`, `club_id`, `city`.
+    - **GET** `/recommendations`: return both recommended clubs and events in one response object.
     - **GET** `/events/{event_id}`: single event.
     - **PATCH** `/events/{event_id}`: update event details.
     - **DELETE** `/events/{event_id}`: delete event.
