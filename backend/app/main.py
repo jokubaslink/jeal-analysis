@@ -288,7 +288,9 @@ class EventOut(BaseModel):
 class RecommendedEventOut(BaseModel):
     id: str
     title: str
+    date: str
     description: str | None = None
+    category: str | None = None
     category_id: str | None = None
     category_name: str | None = None
     club_id: str | None = None
@@ -1295,7 +1297,9 @@ def list_recommended_events(
         RecommendedEventOut(
             id=str(e.id),
             title=e.title,
+            date=e.start_time.isoformat(),
             description=e.description,
+            category=e.category.name if e.category else None,
             category_id=str(e.category_id) if e.category_id else None,
             category_name=e.category.name if e.category else None,
             club_id=str(e.club_id) if e.club_id else None,
