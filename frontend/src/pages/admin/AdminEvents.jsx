@@ -16,6 +16,7 @@ export default function AdminEvents() {
   const [eventsError, setEventsError] = useState("");
   const [eventsLoading, setEventsLoading] = useState(false);
   const [flashMessage, setFlashMessage] = useState("");
+  const [pendingVisibilityId, setPendingVisibilityId] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -42,10 +43,42 @@ export default function AdminEvents() {
     setFlashMessage(location.state?.flashMessage || "");
   }, [location.state]);
 
+  async function handleVisibilityChange(eventItem) {
+    const nextIsActive = !eventItem.is_active;
+    const actionLabel = nextIsActive ? "reactivate" : "mark as inactive";
+    const confirmed = window.confirm(
+      `Are you sure you want to ${actionLabel} "${eventItem.title}"?`,
+    );
+
+    if (!confirmed) return;
+
+    setPendingVisibilityId(eventItem.id);
+    setEventsError("");
+    setFlashMessage("");
+
+    try {
+      const updatedEvent = await apiFetch(`/admin/events/${eventItem.id}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: nextIsActive }),
+      });
+
+      setEvents((currentEvents) =>
+        currentEvents.map((currentEvent) =>
+          currentEvent.id === eventItem.id ? updatedEvent : currentEvent,
+        ),
+      );
+      setFlashMessage(nextIsActive ? "Event reactivated." : "Event marked as inactive.");
+    } catch (e) {
+      setEventsError(e.message || "Could not update event visibility.");
+    } finally {
+      setPendingVisibilityId("");
+    }
+  }
+
   return (
     <Card>
       <CardTitle>All events</CardTitle>
-      <CardDescription>Browse every event and open a dedicated page to create or edit an event.</CardDescription>
+      <CardDescription>Browse every event, edit details, and control whether each event is visible to users.</CardDescription>
 
       <div className="mt-[length:var(--space-7)] flex justify-end">
         <Link to="/admin/events/new">
@@ -71,13 +104,14 @@ export default function AdminEvents() {
             <tr className="border-b border-[var(--color-line)]">
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Title</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Date</th>
+              <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Status</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-right text-sm font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
             {eventsLoading ? (
               <tr>
-                <td colSpan={3} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
                   Loading events...
                 </td>
               </tr>
@@ -85,7 +119,7 @@ export default function AdminEvents() {
 
             {!eventsLoading && events.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
                   No events found.
                 </td>
               </tr>
@@ -97,7 +131,22 @@ export default function AdminEvents() {
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{event.title}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{formatDate(event.start_time)}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
-                      <div className="flex justify-end">
+                      {event.is_active ? "Active" : "Inactive"}
+                    </td>
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
+                      <div className="flex justify-end gap-[length:var(--space-3)]">
+                        <Button
+                          type="button"
+                          variant={event.is_active ? "secondary" : "default"}
+                          disabled={pendingVisibilityId === event.id}
+                          onClick={() => handleVisibilityChange(event)}
+                        >
+                          {pendingVisibilityId === event.id
+                            ? "Saving..."
+                            : event.is_active
+                              ? "Mark inactive"
+                              : "Reactivate"}
+                        </Button>
                         <Link to={`/admin/events/${event.id}/edit`}>
                           <Button type="button" variant="secondary">
                             Edit

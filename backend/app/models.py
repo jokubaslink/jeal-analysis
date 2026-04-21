@@ -169,6 +169,7 @@ class Event(Base):
     end_time = Column(DateTime(timezone=True), nullable=True)
     city = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true")
     is_online = Column(Boolean, nullable=False, server_default="false")
     registration_url = Column(String(500), nullable=True)
 

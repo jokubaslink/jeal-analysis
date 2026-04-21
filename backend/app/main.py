@@ -327,8 +327,13 @@ class EventOut(BaseModel):
     end_time: str | None = None
     city: str | None = None
     location: str | None = None
+    is_active: bool
     is_online: bool
     registration_url: str | None = None
+
+
+class EventVisibilityUpdate(BaseModel):
+    is_active: bool
 
 
 class RecommendedEventOut(BaseModel):
@@ -714,6 +719,7 @@ def _build_recommended_events(
             joinedload(models.Event.category),
             joinedload(models.Event.club),
         )
+        .filter(models.Event.is_active.is_(True))
         .filter(models.Event.start_time > func.now())
         .all()
     )
@@ -749,6 +755,100 @@ def _build_recommended_events(
         )
         for score, e in top
     ]
+
+
+def _build_events_query(
+    *,
+    db: Session,
+    category_id: str | None = None,
+    club_id: str | None = None,
+    city: str | None = None,
+):
+    query = (
+        db.query(models.Event)
+        .join(
+            models.InterestCategory,
+            models.Event.category_id == models.InterestCategory.id,
+            isouter=True,
+        )
+        .join(
+            models.Club,
+            models.Event.club_id == models.Club.id,
+            isouter=True,
+        )
+    )
+
+    if category_id is not None:
+        try:
+            category_uuid = uuid.UUID(category_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid category ID format.",
+            )
+        query = query.filter(models.Event.category_id == category_uuid)
+
+    if club_id is not None:
+        try:
+            club_uuid = uuid.UUID(club_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid club ID format.",
+            )
+        query = query.filter(models.Event.club_id == club_uuid)
+
+    if city is not None:
+        query = query.filter(models.Event.city == city)
+
+    return query
+
+
+def _serialize_event(event: models.Event) -> EventOut:
+    return EventOut(
+        id=str(event.id),
+        title=event.title,
+        description=event.description,
+        category_id=str(event.category_id) if event.category_id else None,
+        category_name=event.category.name if event.category else None,
+        club_id=str(event.club_id) if event.club_id else None,
+        club_name=event.club.name if event.club else None,
+        start_time=event.start_time.isoformat(),
+        end_time=event.end_time.isoformat() if event.end_time else None,
+        city=event.city,
+        location=event.location,
+        is_active=event.is_active,
+        is_online=event.is_online,
+        registration_url=event.registration_url,
+    )
+
+
+def _get_event_or_404(
+    event_id: str,
+    *,
+    db: Session,
+    active_only: bool = False,
+) -> models.Event:
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid event ID format.",
+        )
+
+    query = db.query(models.Event).filter(models.Event.id == event_uuid)
+    if active_only:
+        query = query.filter(models.Event.is_active.is_(True))
+
+    event = query.first()
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found.",
+        )
+
+    return event
 
 
 class SimilarUserPublicOut(BaseModel):
@@ -1251,6 +1351,7 @@ def create_event(
         end_time=payload.end_time,
         city=payload.city,
         location=payload.location,
+        is_active=True,
         is_online=payload.is_online if payload.is_online is not None else False,
         registration_url=payload.registration_url,
     )
@@ -1283,62 +1384,19 @@ def list_events(
     city: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = (
-        db.query(models.Event)
-        .join(
-            models.InterestCategory,
-            models.Event.category_id == models.InterestCategory.id,
-            isouter=True,
+    events = (
+        _build_events_query(
+            db=db,
+            category_id=category_id,
+            club_id=club_id,
+            city=city,
         )
-        .join(
-            models.Club,
-            models.Event.club_id == models.Club.id,
-            isouter=True,
-        )
+        .filter(models.Event.is_active.is_(True))
+        .filter(models.Event.start_time > func.now())
+        .order_by(models.Event.start_time.asc())
+        .all()
     )
-
-    if category_id is not None:
-        try:
-            category_uuid = uuid.UUID(category_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid category ID format.",
-            )
-        query = query.filter(models.Event.category_id == category_uuid)
-
-    if club_id is not None:
-        try:
-            club_uuid = uuid.UUID(club_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid club ID format.",
-            )
-        query = query.filter(models.Event.club_id == club_uuid)
-
-    if city is not None:
-        query = query.filter(models.Event.city == city)
-
-    events = query.order_by(models.Event.start_time.desc()).all()
-    return [
-        EventOut(
-            id=str(e.id),
-            title=e.title,
-            description=e.description,
-            category_id=str(e.category_id) if e.category_id else None,
-            category_name=e.category.name if e.category else None,
-            club_id=str(e.club_id) if e.club_id else None,
-            club_name=e.club.name if e.club else None,
-            start_time=e.start_time.isoformat(),
-            end_time=e.end_time.isoformat() if e.end_time else None,
-            city=e.city,
-            location=e.location,
-            is_online=e.is_online,
-            registration_url=e.registration_url,
-        )
-        for e in events
-    ]
+    return [_serialize_event(event) for event in events]
 
 
 @app.get("/admin/events", response_model=list[EventOut])
@@ -1349,7 +1407,17 @@ def list_events_admin(
     _admin: models.User = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
-    return list_events(category_id=category_id, club_id=club_id, city=city, db=db)
+    events = (
+        _build_events_query(
+            db=db,
+            category_id=category_id,
+            club_id=club_id,
+            city=city,
+        )
+        .order_by(models.Event.start_time.desc())
+        .all()
+    )
+    return [_serialize_event(event) for event in events]
 
 
 @app.get("/events/recommended", response_model=list[RecommendedEventOut])
@@ -1402,36 +1470,7 @@ def get_recommendations(
 
 @app.get("/events/{event_id}", response_model=EventOut)
 def get_event(event_id: str, db: Session = Depends(get_db)):
-    try:
-        event_uuid = uuid.UUID(event_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid event ID format.",
-        )
-
-    event = db.query(models.Event).filter(models.Event.id == event_uuid).first()
-    if not event:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Event not found.",
-        )
-
-    return EventOut(
-        id=str(event.id),
-        title=event.title,
-        description=event.description,
-        category_id=str(event.category_id) if event.category_id else None,
-        category_name=event.category.name if event.category else None,
-        club_id=str(event.club_id) if event.club_id else None,
-        club_name=event.club.name if event.club else None,
-        start_time=event.start_time.isoformat(),
-        end_time=event.end_time.isoformat() if event.end_time else None,
-        city=event.city,
-        location=event.location,
-        is_online=event.is_online,
-        registration_url=event.registration_url,
-    )
+    return _serialize_event(_get_event_or_404(event_id, db=db, active_only=True))
 
 
 @app.get("/admin/events/{event_id}", response_model=EventOut)
@@ -1440,25 +1479,12 @@ def get_event_admin(
     _admin: models.User = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ):
-    return get_event(event_id=event_id, db=db)
+    return _serialize_event(_get_event_or_404(event_id, db=db))
 
 
 @app.patch("/events/{event_id}", response_model=EventOut)
 def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_db)):
-    try:
-        event_uuid = uuid.UUID(event_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid event ID format.",
-        )
-
-    event = db.query(models.Event).filter(models.Event.id == event_uuid).first()
-    if not event:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Event not found.",
-        )
+    event = _get_event_or_404(event_id, db=db)
 
     data = payload.model_dump(exclude_unset=True)
 
@@ -1528,21 +1554,7 @@ def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(event)
 
-    return EventOut(
-        id=str(event.id),
-        title=event.title,
-        description=event.description,
-        category_id=str(event.category_id) if event.category_id else None,
-        category_name=event.category.name if event.category else None,
-        club_id=str(event.club_id) if event.club_id else None,
-        club_name=event.club.name if event.club else None,
-        start_time=event.start_time.isoformat(),
-        end_time=event.end_time.isoformat() if event.end_time else None,
-        city=event.city,
-        location=event.location,
-        is_online=event.is_online,
-        registration_url=event.registration_url,
-    )
+    return _serialize_event(event)
 
 
 @app.patch("/admin/events/{event_id}", response_model=EventOut)
@@ -1553,6 +1565,20 @@ def update_event_admin(
     db: Session = Depends(get_db),
 ):
     return update_event(event_id=event_id, payload=payload, db=db)
+
+
+@app.patch("/admin/events/{event_id}/visibility", response_model=EventOut)
+def update_event_visibility_admin(
+    event_id: str,
+    payload: EventVisibilityUpdate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    event.is_active = payload.is_active
+    db.commit()
+    db.refresh(event)
+    return _serialize_event(event)
 
 
 @app.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
