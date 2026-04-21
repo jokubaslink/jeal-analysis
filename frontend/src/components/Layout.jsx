@@ -36,6 +36,8 @@ export default function Layout() {
 
           <nav style={styles.nav} aria-label="Main navigation">
             <NavLink to="/" style={linkStyle}>Home</NavLink>
+            <NavLink to="/clubs" style={linkStyle}>Clubs</NavLink>
+            <NavLink to="/events" style={linkStyle}>Events</NavLink>
 
             {!isAuthed && (
               <>

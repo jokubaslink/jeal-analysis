@@ -5,6 +5,8 @@ import Register from "./pages/Register.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Interests from "./pages/Interests.jsx";
 import Results from "./pages/Results.jsx";
+import Clubs from "./pages/Clubs.jsx";
+import Events from "./pages/Events.jsx";
 import Layout from "./components/Layout.jsx";
 import AdminLayout from "./components/AdminLayout.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
@@ -22,6 +24,8 @@ export default function App() {
         <Route path="/" element={<OnboardingQuiz />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/clubs" element={<Clubs />} />
+        <Route path="/events" element={<Events />} />
 
         <Route
           path="/results"
