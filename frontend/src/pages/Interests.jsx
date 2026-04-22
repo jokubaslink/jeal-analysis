@@ -182,6 +182,8 @@ export default function Interests() {
                           <button
                             type="button"
                             onClick={() => handleToggleInterest(interest.id)}
+                            aria-label={`${checked ? "Remove" : "Add"} interest ${interest.name}`}
+                            aria-pressed={checked}
                             className={[
                               "h-full w-full rounded-[var(--radius-lg)] border p-[length:var(--space-6)] text-left transition-all duration-[var(--duration-fast)]",
                               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-green)]",

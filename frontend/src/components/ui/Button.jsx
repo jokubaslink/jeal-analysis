@@ -1,3 +1,4 @@
+import { cloneElement, isValidElement } from "react";
 import { cn } from "../../lib/cn.js";
 
 const variants = {
@@ -12,6 +13,7 @@ const variants = {
 /**
  * @param {{
  *   variant?: "primary" | "secondary" | "ghost";
+ *   asChild?: boolean;
  *   type?: "button" | "submit" | "reset";
  *   className?: string;
  *   disabled?: boolean;
@@ -20,24 +22,33 @@ const variants = {
  */
 export function Button({
   variant = "primary",
+  asChild = false,
   type = "button",
   className,
   disabled,
   children,
   ...props
 }) {
+  const classes = cn(
+    "inline-flex cursor-pointer items-center justify-center border font-bold transition-opacity duration-[var(--duration-fast)]",
+    "rounded-[var(--radius-pill)] px-[length:var(--space-6)] py-[length:var(--space-5)] [font-size:var(--font-size-body)]",
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-green)]",
+    "disabled:cursor-not-allowed disabled:opacity-50",
+    variants[variant] ?? variants.primary,
+    className
+  );
+
+  if (asChild && isValidElement(children)) {
+    return cloneElement(children, {
+      className: cn(classes, children.props.className),
+    });
+  }
+
   return (
     <button
       type={type}
       disabled={disabled}
-      className={cn(
-        "inline-flex cursor-pointer items-center justify-center border font-bold transition-opacity duration-[var(--duration-fast)]",
-        "rounded-[var(--radius-pill)] px-[length:var(--space-6)] py-[length:var(--space-5)] [font-size:var(--font-size-body)]",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-green)]",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        variants[variant] ?? variants.primary,
-        className
-      )}
+      className={classes}
       {...props}
     >
       {children}

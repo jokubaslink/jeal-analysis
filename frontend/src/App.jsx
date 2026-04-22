@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import OnboardingQuiz from "./pages/OnboardingQuiz.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
+import Main from "./pages/Main.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Interests from "./pages/Interests.jsx";
 import Results from "./pages/Results.jsx";
@@ -23,7 +24,8 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<OnboardingQuiz />} />
+        <Route path="/" element={<Main />} />
+        <Route path="/onboarding" element={<OnboardingQuiz />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route

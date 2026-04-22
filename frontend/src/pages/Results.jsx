@@ -131,7 +131,11 @@ export default function Results() {
               Your saved quiz answers now shape the interests, clubs, and events shown here.
             </p>
           </div>
-          <button type="button" style={secondaryButton} onClick={() => navigate("/")}>
+          <button
+            type="button"
+            style={secondaryButton}
+            onClick={() => navigate("/onboarding", { state: { from: "/results" } })}
+          >
             Update quiz answers
           </button>
         </div>

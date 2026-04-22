@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -19,6 +20,7 @@ import { Alert, EmptyState, Skeleton } from "../components/ui/index.js";
 
 export default function OnboardingQuiz() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthed, userId, logout } = useAuth();
   const [categories, setCategories] = useState([]);
   const [interests, setInterests] = useState([]);
@@ -35,6 +37,7 @@ export default function OnboardingQuiz() {
   const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState(() =>
     hydrateQuizAnswersFromStorage()
   );
+  const returnTo = location.state?.from || "/results";
 
   useEffect(() => {
     let ignore = false;
@@ -202,11 +205,11 @@ export default function OnboardingQuiz() {
     setSaveMessage("");
     setSaveError("");
     if (isAuthed) {
-      navigate("/results", { replace: true });
+      navigate(returnTo, { replace: true });
       return;
     }
     navigate("/register", {
-      state: { from: "/" },
+      state: { from: returnTo },
     });
   };
 
@@ -257,14 +260,14 @@ export default function OnboardingQuiz() {
       clearOnboardingSelections();
       clearOnboardingQuizAnswers();
       setSaveMessage("Your interests are saved. Redirecting to your results...");
-      window.setTimeout(() => navigate("/results", { replace: true }), 900);
+      window.setTimeout(() => navigate(returnTo, { replace: true }), 900);
     } catch (saveSelectionsError) {
       if (saveSelectionsError.status === 401 || saveSelectionsError.status === 403) {
         setSaveError("Please log in again to save your onboarding answers.");
         logout();
         navigate("/login", {
           replace: true,
-          state: { from: "/" },
+          state: { from: returnTo },
         });
         return;
       }
@@ -273,7 +276,7 @@ export default function OnboardingQuiz() {
     } finally {
       setIsSaving(false);
     }
-  }, [hasAnySelection, logout, navigate, selectedIds, userId]);
+  }, [hasAnySelection, logout, navigate, returnTo, selectedIds, userId]);
 
   const handleFinish = async () => {
     if (!hasAnySelection) {
@@ -401,6 +404,8 @@ export default function OnboardingQuiz() {
                           key={option.id}
                           type="button"
                           onClick={() => handleSelectQuestionOption(question.id, option.id)}
+                          aria-label={`${isSelected ? "Selected option" : "Choose option"} ${option.label}`}
+                          aria-pressed={isSelected}
                           style={{
                             ...quizOptionButton,
                             borderColor: isSelected ? "#113c2d" : "rgba(17, 24, 39, 0.12)",
@@ -429,6 +434,8 @@ export default function OnboardingQuiz() {
                   key={interest.id}
                   type="button"
                   onClick={() => handleToggleInterest(interest.id)}
+                  aria-label={`${isSelected ? "Deselect" : "Select"} interest ${interest.name}`}
+                  aria-pressed={isSelected}
                   style={{
                     ...optionCard,
                     borderColor: isSelected ? "#113c2d" : "rgba(17, 24, 39, 0.12)",
@@ -491,7 +498,7 @@ export default function OnboardingQuiz() {
                     type="button"
                     onClick={() =>
                       navigate("/login", {
-                        state: { from: "/" },
+                        state: { from: returnTo },
                       })
                     }
                     style={ghostButton}
@@ -502,7 +509,7 @@ export default function OnboardingQuiz() {
                     type="button"
                     onClick={() =>
                       navigate("/register", {
-                        state: { from: "/" },
+                        state: { from: returnTo },
                       })
                     }
                     style={primaryButton}

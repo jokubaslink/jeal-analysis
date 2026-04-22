@@ -30,6 +30,7 @@ export default function Layout() {
             type="button"
             onClick={() => navigate(isAuthed ? "/dashboard" : "/")}
             style={styles.logoButton}
+            aria-label={isAuthed ? "Go to dashboard" : "Go to home page"}
           >
             <h2 style={styles.logo}>JEAL</h2>
           </button>
