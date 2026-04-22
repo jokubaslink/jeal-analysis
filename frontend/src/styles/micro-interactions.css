@@ -1,0 +1,177 @@
+/**
+ * Lightweight motion: CSS-only, GPU-friendly (transform/opacity).
+ * Respects prefers-reduced-motion.
+ */
+
+@keyframes jeal-route-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes jeal-feedback-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes jeal-selection-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(63, 98, 18, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(63, 98, 18, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(63, 98, 18, 0);
+  }
+}
+
+.jeal-route-shell {
+  animation: jeal-route-in var(--duration-normal) var(--ease-out) both;
+}
+
+.jeal-feedback-enter {
+  animation: jeal-feedback-enter 0.38s var(--ease-out) both;
+}
+
+/* Main & admin navigation */
+.jeal-nav-link {
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-ink);
+  border: 1px solid transparent;
+  transition:
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    transform 0.12s var(--ease-out);
+}
+
+.jeal-nav-link--active {
+  background: rgba(17, 24, 39, 0.08);
+  border-color: rgba(17, 24, 39, 0.12);
+}
+
+.jeal-nav-link--inactive:hover {
+  background: rgba(17, 24, 39, 0.05);
+}
+
+.jeal-nav-link:active {
+  transform: scale(0.97);
+}
+
+.jeal-nav-link--sidebar {
+  display: block;
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-size: var(--font-size-body);
+}
+
+/* Logo / header controls */
+.jeal-logo-hit {
+  transition: opacity var(--duration-fast) var(--ease-default), transform 0.12s var(--ease-out);
+}
+
+.jeal-logo-hit:hover {
+  opacity: 0.85;
+}
+
+.jeal-logo-hit:active {
+  transform: scale(0.98);
+}
+
+.jeal-btn-header {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: white;
+  color: var(--color-ink);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    transform 0.12s var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.jeal-btn-header:hover {
+  background: var(--color-bg-page-top);
+  border-color: rgba(17, 24, 39, 0.22);
+}
+
+.jeal-btn-header:active {
+  transform: scale(0.98);
+}
+
+.jeal-btn-header--quiet {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: var(--color-bg-page-top);
+}
+
+.jeal-btn-header--quiet:hover {
+  background: #eef2e7;
+}
+
+/* Directory cards (Clubs grid, etc.) */
+.jeal-card-interactive {
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.jeal-card-interactive:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.1);
+}
+
+.jeal-card-interactive:active {
+  transform: translateY(-1px);
+  transition-duration: 0.1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jeal-route-shell,
+  .jeal-feedback-enter {
+    animation: none !important;
+  }
+
+  .jeal-nav-link,
+  .jeal-logo-hit,
+  .jeal-btn-header,
+  .jeal-card-interactive {
+    transition: none !important;
+  }
+
+  .jeal-nav-link:active,
+  .jeal-logo-hit:active,
+  .jeal-btn-header:active,
+  .jeal-card-interactive:active {
+    transform: none !important;
+  }
+
+  .jeal-card-interactive:hover {
+    transform: none !important;
+  }
+}
+
+/* Optional: focus ring pulse after keyboard selection (add class from JS if needed) */
+.jeal-selection-ring {
+  animation: jeal-selection-pulse 0.6s var(--ease-out) 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jeal-selection-ring {
+    animation: none;
+  }
+}

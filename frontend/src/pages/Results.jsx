@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
+import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
+import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
 export default function Results() {
   const navigate = useNavigate();
@@ -108,6 +110,19 @@ export default function Results() {
     return Array.from(groups.entries());
   }, [interests]);
 
+  const upcomingSuggestedEvents = useMemo(
+    () => events.filter((event) => !isEventPast(event)),
+    [events]
+  );
+
+  const hasSavedInterests = interests.length > 0;
+
+  const interestsEmptyAction = (
+    <Button asChild variant="secondary">
+      <Link to="/interests">Choose interests</Link>
+    </Button>
+  );
+
   if (isLoading) {
     return (
       <div style={page}>
@@ -182,7 +197,8 @@ export default function Results() {
             <EmptyState
               align="left"
               title="No suggested interests yet"
-              description="Save a few quiz answers to unlock suggested interests and stronger recommendations."
+              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+              action={interestsEmptyAction}
             />
           )}
         </section>
@@ -215,7 +231,12 @@ export default function Results() {
             <EmptyState
               align="left"
               title="No club matches yet"
-              description="Add more interests or seed more club data to expand results."
+              description={
+                hasSavedInterests
+                  ? "Add more interests or seed more club data to expand results."
+                  : INTERESTS_EMPTY_FOR_RECOMMENDATIONS
+              }
+              action={hasSavedInterests ? undefined : interestsEmptyAction}
             />
           )}
         </section>
@@ -223,12 +244,12 @@ export default function Results() {
         <section style={{ ...panel, gridColumn: "1 / -1" }}>
           <div style={sectionHeader}>
             <h2 style={sectionTitle}>Suggested events</h2>
-            <span style={countPill}>{events.length}</span>
+            <span style={countPill}>{upcomingSuggestedEvents.length}</span>
           </div>
 
-          {events.length > 0 ? (
+          {upcomingSuggestedEvents.length > 0 ? (
             <div style={eventGrid}>
-              {events.map((event) => (
+              {upcomingSuggestedEvents.map((event) => (
                 <article key={event.id} style={recommendationCard}>
                   <div style={cardTopRow}>
                     <h3 style={cardTitle}>{event.title}</h3>
@@ -243,14 +264,24 @@ export default function Results() {
                   <p style={cardBody}>
                     {event.description || "An event picked from the interests you selected."}
                   </p>
+                  <Link to={`/events/${event.id}`} style={eventDetailLink}>
+                    View event details →
+                  </Link>
                 </article>
               ))}
             </div>
           ) : (
             <EmptyState
               align="left"
-              title="No event matches yet"
-              description="The recommendations area is ready once matching data exists."
+              title="No upcoming event matches yet"
+              description={
+                !hasSavedInterests
+                  ? INTERESTS_EMPTY_FOR_RECOMMENDATIONS
+                  : events.length > 0
+                    ? "Older matches are hidden here so you can focus on what is still ahead."
+                    : "The recommendations area is ready once matching data exists."
+              }
+              action={!hasSavedInterests ? interestsEmptyAction : undefined}
             />
           )}
         </section>
@@ -436,6 +467,15 @@ const cardBody = {
   color: "#4b5563",
   fontSize: "14px",
   lineHeight: 1.5,
+};
+
+const eventDetailLink = {
+  display: "inline-flex",
+  marginTop: "14px",
+  fontSize: "14px",
+  fontWeight: 700,
+  color: "#c2410c",
+  textDecoration: "none",
 };
 
 const eventGrid = {

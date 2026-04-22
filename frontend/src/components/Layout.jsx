@@ -1,9 +1,11 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { cn } from "../lib/cn.js";
 
 export default function Layout() {
   const { isAuthed, isAdmin, authReady, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const currentYear = new Date().getFullYear();
 
   const handleLogout = () => {
@@ -11,16 +13,8 @@ export default function Layout() {
     navigate("/login", { replace: true });
   };
 
-  const linkStyle = ({ isActive }) => ({
-    textDecoration: "none",
-    padding: "8px 14px",
-    borderRadius: "999px",
-    fontWeight: 600,
-    color: "#111827",
-    background: isActive ? "rgba(17, 24, 39, 0.08)" : "transparent",
-    border: isActive ? "1px solid rgba(17, 24, 39, 0.12)" : "1px solid transparent",
-    transition: "background 0.15s ease, border-color 0.15s ease",
-  });
+  const navClass = ({ isActive }) =>
+    cn("jeal-nav-link", isActive ? "jeal-nav-link--active" : "jeal-nav-link--inactive");
 
   return (
     <div style={styles.page}>
@@ -29,6 +23,7 @@ export default function Layout() {
           <button
             type="button"
             onClick={() => navigate(isAuthed ? "/dashboard" : "/")}
+            className="jeal-logo-hit"
             style={styles.logoButton}
             aria-label={isAuthed ? "Go to dashboard" : "Go to home page"}
           >
@@ -36,26 +31,48 @@ export default function Layout() {
           </button>
 
           <nav style={styles.nav} aria-label="Main navigation">
-            <NavLink to="/" style={linkStyle}>Home</NavLink>
+            <NavLink to="/" className={navClass}>
+              Home
+            </NavLink>
 
             {!isAuthed && (
               <>
-                <NavLink to="/login" style={linkStyle}>Login</NavLink>
-                <NavLink to="/register" style={linkStyle}>Register</NavLink>
+                <NavLink to="/login" className={navClass}>
+                  Login
+                </NavLink>
+                <NavLink to="/register" className={navClass}>
+                  Register
+                </NavLink>
               </>
             )}
 
             {isAuthed && (
               <>
-                <NavLink to="/clubs" style={linkStyle}>Clubs</NavLink>
-                <NavLink to="/events" style={linkStyle}>Events</NavLink>
-                <NavLink to="/results" style={linkStyle}>Results</NavLink>
-                <NavLink to="/dashboard" style={linkStyle}>Dashboard</NavLink>
-                <NavLink to="/interests" style={linkStyle}>Interests</NavLink>
+                <NavLink to="/clubs" className={navClass}>
+                  Clubs
+                </NavLink>
+                <NavLink to="/events" className={navClass}>
+                  Events
+                </NavLink>
+                <NavLink to="/results" className={navClass}>
+                  Results
+                </NavLink>
+                <NavLink to="/dashboard" className={navClass}>
+                  Dashboard
+                </NavLink>
+                <NavLink to="/interests" className={navClass}>
+                  Interests
+                </NavLink>
                 {authReady && isAdmin ? (
-                  <NavLink to="/admin" style={linkStyle}>Admin</NavLink>
+                  <NavLink to="/admin" className={navClass}>
+                    Admin
+                  </NavLink>
                 ) : null}
-                <button type="button" onClick={handleLogout} style={styles.logoutButton}>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="jeal-btn-header"
+                >
                   Logout
                 </button>
               </>
@@ -66,7 +83,9 @@ export default function Layout() {
 
       <main style={styles.main}>
         <div style={styles.mainContainer}>
-          <Outlet />
+          <div key={location.pathname} className="jeal-route-shell">
+            <Outlet />
+          </div>
         </div>
       </main>
 
@@ -120,15 +139,6 @@ const styles = {
     width: "100%",
     maxWidth: "1200px",
     margin: "0 auto",
-  },
-  logoutButton: {
-    padding: "8px 14px",
-    borderRadius: "999px",
-    border: "1px solid rgba(17, 24, 39, 0.16)",
-    background: "white",
-    color: "#111827",
-    fontWeight: 600,
-    cursor: "pointer",
   },
   footer: {
     width: "100%",

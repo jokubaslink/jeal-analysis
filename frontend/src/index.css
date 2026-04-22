@@ -18,6 +18,13 @@ a {
   font-weight: 500;
   color: inherit;
   text-decoration: inherit;
+  transition: color var(--duration-fast) var(--ease-default), opacity var(--duration-fast) var(--ease-default);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a {
+    transition: none;
+  }
 }
 
 html, body, #root {

@@ -1,20 +1,15 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-
-const linkStyle = ({ isActive }) => ({
-  textDecoration: "none",
-  padding: "10px 16px",
-  borderRadius: "12px",
-  fontWeight: 600,
-  fontSize: "14px",
-  color: "#111827",
-  background: isActive ? "rgba(17, 24, 39, 0.08)" : "transparent",
-  border: isActive ? "1px solid rgba(17, 24, 39, 0.12)" : "1px solid transparent",
-  display: "block",
-  transition: "background 0.15s ease, border-color 0.15s ease",
-});
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { cn } from "../lib/cn.js";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const navClass = ({ isActive }) =>
+    cn(
+      "jeal-nav-link jeal-nav-link--sidebar",
+      isActive ? "jeal-nav-link--active" : "jeal-nav-link--inactive"
+    );
 
   return (
     <div style={styles.wrapper}>
@@ -25,18 +20,19 @@ export default function AdminLayout() {
           <p style={styles.subtitle}>Manage clubs, events, and related content.</p>
         </div>
         <nav style={styles.nav}>
-          <NavLink to="/admin" end style={linkStyle}>
+          <NavLink to="/admin" end className={navClass}>
             Overview
           </NavLink>
-          <NavLink to="/admin/clubs" style={linkStyle}>
+          <NavLink to="/admin/clubs" className={navClass}>
             Clubs
           </NavLink>
-          <NavLink to="/admin/events" style={linkStyle}>
+          <NavLink to="/admin/events" className={navClass}>
             Events
           </NavLink>
         </nav>
         <button
           type="button"
+          className="jeal-btn-header jeal-btn-header--quiet"
           style={styles.backButton}
           onClick={() => navigate("/dashboard")}
         >
@@ -44,7 +40,9 @@ export default function AdminLayout() {
         </button>
       </aside>
       <div style={styles.content}>
-        <Outlet />
+        <div key={location.pathname} className="jeal-route-shell">
+          <Outlet />
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
-import { Alert, EmptyState, LoadingState } from "../components/ui/index.js";
+import { useAuth } from "../auth/AuthContext.jsx";
+import { isEventPast } from "../lib/eventTime.js";
+import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
+import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
 const CARD_GRADIENTS = [
   "linear-gradient(135deg, #0ea5e9 0%, #6366f1 50%, #a855f7 100%)",
@@ -78,10 +81,12 @@ function formatTimeRange(start, end) {
 }
 
 export default function Events() {
+  const { userId } = useAuth();
   const [events, setEvents] = useState([]);
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [savedInterestCount, setSavedInterestCount] = useState(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [datePreset, setDatePreset] = useState("all");
   const [customFrom, setCustomFrom] = useState(toDateInputValue(new Date()));
@@ -90,6 +95,7 @@ export default function Events() {
   const [interestedIds, setInterestedIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
   const [feedbackToast, setFeedbackToast] = useState(null);
+  const [showPastEvents, setShowPastEvents] = useState(false);
 
   const scrollerRef = useRef(null);
   const cardRefs = useRef([]);
@@ -100,6 +106,7 @@ export default function Events() {
     const loadData = async () => {
       setIsLoading(true);
       setErrorMessage("");
+      setSavedInterestCount(null);
 
       try {
         const [recommendedResult, allResult, categoriesResult] =
@@ -144,6 +151,19 @@ export default function Events() {
             ? categoriesResult.value
             : []
         );
+
+        let interestCount = null;
+        if (userId) {
+          try {
+            const rawInterests = await apiFetch(`/users/${userId}/interests`);
+            interestCount = Array.isArray(rawInterests) ? rawInterests.length : 0;
+          } catch {
+            interestCount = 0;
+          }
+        }
+        if (!ignore) {
+          setSavedInterestCount(interestCount);
+        }
       } catch (error) {
         if (!ignore) {
           setErrorMessage(error.message || "Could not load events.");
@@ -157,7 +177,7 @@ export default function Events() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [userId]);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -179,7 +199,10 @@ export default function Events() {
   }, [datePreset, customFrom, customTo]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((event) => {
+    const list = events.filter((event) => {
+      if (!showPastEvents && isEventPast(event)) {
+        return false;
+      }
       if (selectedCategoryId && event.category_id !== selectedCategoryId) {
         return false;
       }
@@ -193,14 +216,28 @@ export default function Events() {
       }
       return true;
     });
-  }, [events, selectedCategoryId, dateRange]);
+    if (!showPastEvents) {
+      return list;
+    }
+    return [...list].sort((a, b) => {
+      const aPast = isEventPast(a);
+      const bPast = isEventPast(b);
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
+      const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
+      return aTime - bTime;
+    });
+  }, [events, selectedCategoryId, dateRange, showPastEvents]);
+
+  const allLoadedArePast =
+    events.length > 0 && events.every((event) => isEventPast(event));
 
   useEffect(() => {
     setActiveIndex(0);
     if (scrollerRef.current) {
       scrollerRef.current.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [selectedCategoryId, datePreset, customFrom, customTo]);
+  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -302,11 +339,12 @@ export default function Events() {
   };
 
   const hasActiveFilters =
-    Boolean(selectedCategoryId) || datePreset !== "all";
+    Boolean(selectedCategoryId) || datePreset !== "all" || showPastEvents;
 
   const handleClearFilters = () => {
     setSelectedCategoryId("");
     setDatePreset("all");
+    setShowPastEvents(false);
   };
 
   return (
@@ -327,6 +365,24 @@ export default function Events() {
           </div>
         ) : null}
       </div>
+
+      {userId &&
+      savedInterestCount !== null &&
+      savedInterestCount === 0 &&
+      !isLoading ? (
+        <div style={styles.interestsCallout}>
+          <EmptyState
+            align="left"
+            title="Match scores need your interests"
+            description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+            action={
+              <Button asChild variant="secondary">
+                <Link to="/interests">Choose interests</Link>
+              </Button>
+            }
+          />
+        </div>
+      ) : null}
 
       <div style={styles.filterGroup} aria-label="Date range filters">
         <div style={styles.filterGroupHeader}>
@@ -354,6 +410,15 @@ export default function Events() {
             </button>
           ))}
         </div>
+
+        <label style={styles.showPastRow}>
+          <input
+            type="checkbox"
+            checked={showPastEvents}
+            onChange={(e) => setShowPastEvents(e.target.checked)}
+          />
+          <span>Show past events (labeled “Past”)</span>
+        </label>
 
         {datePreset === "custom" ? (
           <div style={styles.customRangeRow}>
@@ -439,12 +504,16 @@ export default function Events() {
             title={
               events.length === 0
                 ? "No upcoming events yet"
-                : "No events match your filters"
+                : allLoadedArePast && !showPastEvents
+                  ? "No upcoming events"
+                  : "No events match your filters"
             }
             description={
               events.length === 0
                 ? "Once events are scheduled, they will appear here."
-                : "Try adjusting the date range or category to see more results."
+                : allLoadedArePast && !showPastEvents
+                  ? "Turn on “Show past events” under When to browse past activities."
+                  : "Try adjusting the date range or category to see more results."
             }
           />
         </div>
@@ -459,6 +528,7 @@ export default function Events() {
             const dateShort = formatEventDateShort(event.start_time);
             const dateLong = formatEventDateLong(event.start_time);
             const timeRange = formatTimeRange(event.start_time, event.end_time);
+            const past = isEventPast(event);
 
             return (
               <section
@@ -487,6 +557,11 @@ export default function Events() {
                         ) : null}
                       </div>
                       <div style={styles.topBadgeStack}>
+                        {past ? (
+                          <span style={styles.pastBadge} aria-label="Past event">
+                            Past
+                          </span>
+                        ) : null}
                         {event.score > 0 ? (
                           <span
                             style={styles.scoreBadge}
@@ -639,6 +714,10 @@ const styles = {
     flexWrap: "wrap",
     padding: "0 4px",
   },
+  interestsCallout: {
+    width: "100%",
+    padding: "0 4px",
+  },
   titleBlock: {
     display: "flex",
     flexDirection: "column",
@@ -735,6 +814,17 @@ const styles = {
     gap: "10px",
     flexWrap: "wrap",
     paddingTop: "4px",
+  },
+  showPastRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    paddingTop: "8px",
+    fontSize: "13px",
+    fontWeight: 600,
+    color: "#374151",
+    cursor: "pointer",
+    userSelect: "none",
   },
   dateField: {
     flex: "1 1 160px",
@@ -971,6 +1061,18 @@ const styles = {
     borderRadius: "999px",
     background: "rgba(250, 204, 21, 0.95)",
     color: "#111827",
+    fontSize: "11px",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+  },
+  pastBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(17, 24, 39, 0.75)",
+    color: "white",
     fontSize: "11px",
     fontWeight: 800,
     letterSpacing: "0.04em",

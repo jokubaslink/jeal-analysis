@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
 import { Alert, Button, Card, CardDescription, CardTitle, EmptyState, Skeleton } from "../components/ui/index.js";
+import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
 export default function Interests() {
   const navigate = useNavigate();
@@ -118,8 +119,12 @@ export default function Interests() {
 
       {saveSuccessMessage ? <Alert variant="success">{saveSuccessMessage}</Alert> : null}
       {saveErrorMessage ? <Alert variant="error">{saveErrorMessage}</Alert> : null}
-      {!anySelected ? (
-        <Alert variant="error">Please select at least one interest before saving.</Alert>
+      {userId && !isLoading && !anySelected ? (
+        <EmptyState
+          align="left"
+          title="No interests selected yet"
+          description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+        />
       ) : null}
 
       <Card className="p-[length:var(--space-10)]">
@@ -185,11 +190,14 @@ export default function Interests() {
                             aria-label={`${checked ? "Remove" : "Add"} interest ${interest.name}`}
                             aria-pressed={checked}
                             className={[
-                              "h-full w-full rounded-[var(--radius-lg)] border p-[length:var(--space-6)] text-left transition-all duration-[var(--duration-fast)]",
+                              "h-full w-full rounded-[var(--radius-lg)] border p-[length:var(--space-6)] text-left",
+                              "transition-[transform,box-shadow,background-color,border-color] duration-[var(--duration-normal)] [transition-timing-function:var(--ease-out)]",
+                              "motion-reduce:transition-none motion-reduce:active:scale-100",
+                              "active:scale-[0.99] hover:-translate-y-px motion-reduce:hover:translate-y-0",
                               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-green)]",
                               checked
                                 ? "border-[var(--color-brand-green)] bg-[linear-gradient(135deg,rgba(190,242,100,0.26),rgba(187,247,208,0.38))] shadow-[0_14px_30px_rgba(15,23,42,0.09)]"
-                                : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-medium)] hover:bg-[rgba(17,24,39,0.02)]",
+                                : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-medium)] hover:bg-[rgba(17,24,39,0.02)] hover:shadow-[var(--shadow-card)]",
                             ].join(" ")}
                           >
                             <div className="mb-[length:var(--space-4)] flex items-start justify-between gap-[length:var(--space-3)]">

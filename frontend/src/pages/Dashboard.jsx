@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
+import { isEventPast } from "../lib/eventTime.js";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
-import { Alert, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
+import { Alert, Button, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
+import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -123,6 +125,19 @@ export default function Dashboard() {
     });
     return Array.from(groups.entries());
   }, [userInterests]);
+
+  const upcomingRecommendedEvents = useMemo(
+    () => recommendedEvents.filter((event) => !isEventPast(event)),
+    [recommendedEvents]
+  );
+
+  const hasSavedInterests = Boolean(userId && userInterests.length > 0);
+
+  const interestsEmptyAction = (
+    <Button asChild variant="primary">
+      <Link to="/interests">Choose interests</Link>
+    </Button>
+  );
 
   const displayName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
@@ -504,7 +519,8 @@ export default function Dashboard() {
             <EmptyState
               align="left"
               title="No interests saved yet"
-              description="Complete the quiz or add interests to improve recommendations."
+              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+              action={interestsEmptyAction}
             />
           )}
         </section>
@@ -530,6 +546,13 @@ export default function Dashboard() {
               align="left"
               title="Log in to see recommended clubs"
               description="Your personalized club suggestions will appear here after sign in."
+            />
+          ) : !hasSavedInterests && recommendedClubs.length === 0 ? (
+            <EmptyState
+              align="left"
+              title="No club recommendations yet"
+              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+              action={interestsEmptyAction}
             />
           ) : recommendedClubs.length > 0 ? (
             <div style={recommendedClubGrid}>
@@ -560,7 +583,7 @@ export default function Dashboard() {
             <EmptyState
               align="left"
               title="No club recommendations yet"
-              description="Add or update your interests to get personalized club suggestions."
+              description="Nothing matched your interests yet. Try adding more topics or check back as new clubs are added."
             />
           )}
         </section>
@@ -587,9 +610,9 @@ export default function Dashboard() {
               title="Log in to see recommended events"
               description="Your personalized event suggestions will appear here after sign in."
             />
-          ) : recommendedEvents.length > 0 ? (
+          ) : upcomingRecommendedEvents.length > 0 ? (
             <div style={recommendedEventList}>
-              {recommendedEvents.map((event) => (
+              {upcomingRecommendedEvents.map((event) => (
                 <article key={event.id} style={recommendedEventCard}>
                   <div style={recommendedEventHeader}>
                     <h3 style={recommendedEventTitle}>{event.title}</h3>
@@ -598,13 +621,32 @@ export default function Dashboard() {
                   <p style={recommendedEventDescription}>
                     {event.description || "An upcoming activity selected from the interests you saved."}
                   </p>
+                  <Link to={`/events/${event.id}`} style={recommendedEventDetailLink}>
+                    View event details →
+                  </Link>
                 </article>
               ))}
             </div>
+          ) : !hasSavedInterests ? (
+            <EmptyState
+              align="left"
+              title="No upcoming event recommendations yet"
+              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+              action={interestsEmptyAction}
+            />
           ) : (
             <EmptyState
               align="left"
-              title="No events available."
+              title={
+                recommendedEvents.length > 0
+                  ? "No upcoming recommendations"
+                  : "No events available."
+              }
+              description={
+                recommendedEvents.length > 0
+                  ? "Past events are hidden here so your dashboard stays focused on what is next."
+                  : undefined
+              }
             />
           )}
         </section>
@@ -963,4 +1005,13 @@ const recommendedEventDescription = {
   color: "#4b5563",
   fontSize: "14px",
   lineHeight: 1.5,
+};
+
+const recommendedEventDetailLink = {
+  display: "inline-flex",
+  marginTop: "12px",
+  fontSize: "14px",
+  fontWeight: 700,
+  color: "#1d4ed8",
+  textDecoration: "none",
 };

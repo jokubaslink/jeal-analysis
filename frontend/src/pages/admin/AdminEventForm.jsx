@@ -1,34 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
+import { isoToDatetimeLocal } from "../../lib/adminDatetime.js";
+import { mapApiValidationToFieldErrors, validateEventAdminForm } from "../../lib/adminFormValidation.js";
 import { Alert, Button, Card, CardDescription, CardTitle, Input, Label, Select, Textarea } from "../../components/ui/index.js";
+import AdminFieldError from "./AdminFieldError.jsx";
 
 const fieldClass = "flex flex-col gap-[length:var(--space-2)]";
 const hintClass = "m-0 text-[length:var(--font-size-caption)] text-[var(--color-ink-subtle)]";
-
-function datetimeLocalToIso(value) {
-  if (!value || !value.includes("T")) return null;
-  const [datePart, timePart] = value.split("T");
-  const [y, mo, d] = datePart.split("-").map(Number);
-  const timeBits = (timePart || "0").split(":");
-  const h = Number(timeBits[0]) || 0;
-  const mi = Number(timeBits[1]) || 0;
-  const local = new Date(y, mo - 1, d, h, mi, 0, 0);
-  if (Number.isNaN(local.getTime())) return null;
-  return local.toISOString();
-}
-
-function isoToDatetimeLocal(isoValue) {
-  if (!isoValue) return "";
-  const date = new Date(isoValue);
-  if (Number.isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
 
 export default function AdminEventForm() {
   const { eventId } = useParams();
@@ -52,6 +31,7 @@ export default function AdminEventForm() {
   const [registrationUrl, setRegistrationUrl] = useState("");
 
   const [submitError, setSubmitError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -92,60 +72,50 @@ export default function AdminEventForm() {
     };
   }, [eventId, isEditMode]);
 
+  const clearFieldError = (key) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setSubmitError("");
+  };
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitError("");
+    setFieldErrors({});
 
-    const trimmedTitle = eventTitle.trim();
-    if (!trimmedTitle) {
-      setSubmitError("Event title is required.");
+    const { errors, startIso, endIso, trimmed } = validateEventAdminForm({
+      title: eventTitle,
+      description,
+      startLocal,
+      endLocal,
+      city,
+      location,
+      registrationUrl,
+    });
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setSubmitError("Please fix the fields below before saving.");
+      const first = document.querySelector("[aria-invalid='true']");
+      first?.focus?.();
       return;
-    }
-
-    if (!startLocal) {
-      setSubmitError("Start date and time are required.");
-      return;
-    }
-
-    const startIso = datetimeLocalToIso(startLocal);
-    if (!startIso) {
-      setSubmitError("Invalid start date or time.");
-      return;
-    }
-
-    let endIso = null;
-    if (endLocal.trim()) {
-      endIso = datetimeLocalToIso(endLocal);
-      if (!endIso) {
-        setSubmitError("Invalid end date or time.");
-        return;
-      }
-      if (new Date(endIso) < new Date(startIso)) {
-        setSubmitError("End time must be on or after start time.");
-        return;
-      }
-    }
-
-    const regTrim = registrationUrl.trim();
-    if (regTrim) {
-      const low = regTrim.toLowerCase();
-      if (!low.startsWith("http://") && !low.startsWith("https://")) {
-        setSubmitError("Registration URL must start with http:// or https://.");
-        return;
-      }
     }
 
     const body = {
-      title: trimmedTitle,
-      description: description.trim() || null,
+      title: trimmed.title,
+      description: trimmed.description,
       category_id: categoryId || null,
       club_id: clubId || null,
       start_time: startIso,
       end_time: endIso,
-      city: city.trim() || null,
-      location: location.trim() || null,
+      city: trimmed.city,
+      location: trimmed.location,
       is_online: isOnline,
-      registration_url: regTrim || null,
+      registration_url: trimmed.registration_url,
     };
 
     setIsSubmitting(true);
@@ -164,7 +134,13 @@ export default function AdminEventForm() {
         navigate("/admin/events", { state: { flashMessage: "Event created." } });
       }
     } catch (err) {
-      setSubmitError(err.message || (isEditMode ? "Could not update event." : "Could not create event."));
+      if (err.status === 422 && err.payload?.detail) {
+        const mapped = mapApiValidationToFieldErrors(err.payload.detail);
+        setFieldErrors(mapped);
+        setSubmitError("The server could not save this event. Fix the highlighted fields.");
+      } else {
+        setSubmitError(err.message || (isEditMode ? "Could not update event." : "Could not create event."));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -191,7 +167,7 @@ export default function AdminEventForm() {
         </div>
       ) : null}
 
-      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit}>
+      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit} noValidate>
         <div className={fieldClass}>
           <Label htmlFor="event-title">
             Title <span className="text-[var(--color-error-text)]">*</span>
@@ -199,11 +175,16 @@ export default function AdminEventForm() {
           <Input
             id="event-title"
             value={eventTitle}
-            onChange={(e) => setEventTitle(e.target.value)}
+            onChange={(e) => {
+              setEventTitle(e.target.value);
+              clearFieldError("title");
+            }}
             maxLength={255}
-            required
             autoComplete="off"
+            aria-invalid={fieldErrors.title ? "true" : "false"}
+            aria-describedby={fieldErrors.title ? "event-title-error" : undefined}
           />
+          <AdminFieldError id="event-title-error" message={fieldErrors.title} />
         </div>
 
         <div className={fieldClass}>
@@ -211,16 +192,31 @@ export default function AdminEventForm() {
           <Textarea
             id="event-description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              clearFieldError("description");
+            }}
             maxLength={2000}
             rows={5}
+            aria-invalid={fieldErrors.description ? "true" : "false"}
+            aria-describedby={fieldErrors.description ? "event-description-error" : undefined}
           />
+          <AdminFieldError id="event-description-error" message={fieldErrors.description} />
           <p className={hintClass}>Up to 2000 characters.</p>
         </div>
 
         <div className={fieldClass}>
           <Label htmlFor="event-category">Interest category</Label>
-          <Select id="event-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <Select
+            id="event-category"
+            value={categoryId}
+            onChange={(e) => {
+              setCategoryId(e.target.value);
+              clearFieldError("category_id");
+            }}
+            aria-invalid={fieldErrors.category_id ? "true" : "false"}
+            aria-describedby={fieldErrors.category_id ? "event-category-error" : undefined}
+          >
             <option value="">— None —</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -228,11 +224,21 @@ export default function AdminEventForm() {
               </option>
             ))}
           </Select>
+          <AdminFieldError id="event-category-error" message={fieldErrors.category_id} />
         </div>
 
         <div className={fieldClass}>
           <Label htmlFor="event-club">Club</Label>
-          <Select id="event-club" value={clubId} onChange={(e) => setClubId(e.target.value)}>
+          <Select
+            id="event-club"
+            value={clubId}
+            onChange={(e) => {
+              setClubId(e.target.value);
+              clearFieldError("club_id");
+            }}
+            aria-invalid={fieldErrors.club_id ? "true" : "false"}
+            aria-describedby={fieldErrors.club_id ? "event-club-error" : undefined}
+          >
             <option value="">— None —</option>
             {clubs.map((c) => (
               <option key={c.id} value={c.id}>
@@ -240,6 +246,7 @@ export default function AdminEventForm() {
               </option>
             ))}
           </Select>
+          <AdminFieldError id="event-club-error" message={fieldErrors.club_id} />
         </div>
 
         <div className={fieldClass}>
@@ -250,14 +257,30 @@ export default function AdminEventForm() {
             id="event-start"
             type="datetime-local"
             value={startLocal}
-            onChange={(e) => setStartLocal(e.target.value)}
-            required
+            onChange={(e) => {
+              setStartLocal(e.target.value);
+              clearFieldError("start_time");
+            }}
+            aria-invalid={fieldErrors.start_time ? "true" : "false"}
+            aria-describedby={fieldErrors.start_time ? "event-start-error" : undefined}
           />
+          <AdminFieldError id="event-start-error" message={fieldErrors.start_time} />
         </div>
 
         <div className={fieldClass}>
           <Label htmlFor="event-end">End</Label>
-          <Input id="event-end" type="datetime-local" value={endLocal} onChange={(e) => setEndLocal(e.target.value)} />
+          <Input
+            id="event-end"
+            type="datetime-local"
+            value={endLocal}
+            onChange={(e) => {
+              setEndLocal(e.target.value);
+              clearFieldError("end_time");
+            }}
+            aria-invalid={fieldErrors.end_time ? "true" : "false"}
+            aria-describedby={fieldErrors.end_time ? "event-end-error" : undefined}
+          />
+          <AdminFieldError id="event-end-error" message={fieldErrors.end_time} />
           <p className={hintClass}>Optional. Must be on or after start.</p>
         </div>
 
@@ -266,15 +289,32 @@ export default function AdminEventForm() {
           <Input
             id="event-city"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => {
+              setCity(e.target.value);
+              clearFieldError("city");
+            }}
             maxLength={100}
             autoComplete="address-level2"
+            aria-invalid={fieldErrors.city ? "true" : "false"}
+            aria-describedby={fieldErrors.city ? "event-city-error" : undefined}
           />
+          <AdminFieldError id="event-city-error" message={fieldErrors.city} />
         </div>
 
         <div className={fieldClass}>
           <Label htmlFor="event-location">Location</Label>
-          <Input id="event-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={255} />
+          <Input
+            id="event-location"
+            value={location}
+            onChange={(e) => {
+              setLocation(e.target.value);
+              clearFieldError("location");
+            }}
+            maxLength={255}
+            aria-invalid={fieldErrors.location ? "true" : "false"}
+            aria-describedby={fieldErrors.location ? "event-location-error" : undefined}
+          />
+          <AdminFieldError id="event-location-error" message={fieldErrors.location} />
         </div>
 
         <div className="flex items-center gap-[length:var(--space-4)]">
@@ -297,9 +337,16 @@ export default function AdminEventForm() {
             type="url"
             placeholder="https://"
             value={registrationUrl}
-            onChange={(e) => setRegistrationUrl(e.target.value)}
+            onChange={(e) => {
+              setRegistrationUrl(e.target.value);
+              clearFieldError("registration_url");
+            }}
             maxLength={500}
+            aria-invalid={fieldErrors.registration_url ? "true" : "false"}
+            aria-describedby={fieldErrors.registration_url ? "event-registration-error" : undefined}
           />
+          <AdminFieldError id="event-registration-error" message={fieldErrors.registration_url} />
+          <p className={hintClass}>Optional. Must include http:// or https:// when provided.</p>
         </div>
 
         {submitError ? <Alert variant="error">{submitError}</Alert> : null}

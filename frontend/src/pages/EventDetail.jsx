@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
 function formatDate(value) {
@@ -74,6 +75,8 @@ export default function EventDetail() {
     );
   }
 
+  const past = isEventPast(event);
+
   return (
     <div style={page}>
       <Link to="/events" style={backLink}>
@@ -85,6 +88,7 @@ export default function EventDetail() {
           {event.category_name ? (
             <span style={categoryBadge}>{event.category_name}</span>
           ) : null}
+          {past ? <span style={pastBadge}>Past</span> : null}
           {event.is_online ? (
             <span style={onlineBadge}>● Online</span>
           ) : null}
@@ -185,6 +189,17 @@ const onlineBadge = {
   padding: "6px 12px",
   borderRadius: "999px",
   background: "rgba(16, 185, 129, 0.95)",
+  color: "white",
+  fontSize: "11px",
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const pastBadge = {
+  padding: "6px 12px",
+  borderRadius: "999px",
+  background: "rgba(107, 114, 128, 0.95)",
   color: "white",
   fontSize: "11px",
   fontWeight: 800,

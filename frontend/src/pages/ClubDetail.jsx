@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
 export default function ClubDetail() {
@@ -45,6 +46,22 @@ export default function ClubDetail() {
       ignore = true;
     };
   }, [clubId]);
+
+  const { upcomingEvents, pastEvents } = useMemo(() => {
+    const upcoming = [];
+    const past = [];
+    events.forEach((event) => {
+      (isEventPast(event) ? past : upcoming).push(event);
+    });
+    const byStart = (a, b) => {
+      const at = a.start_time ? new Date(a.start_time).getTime() : 0;
+      const bt = b.start_time ? new Date(b.start_time).getTime() : 0;
+      return at - bt;
+    };
+    upcoming.sort(byStart);
+    past.sort((a, b) => byStart(b, a));
+    return { upcomingEvents: upcoming, pastEvents: past };
+  }, [events]);
 
   if (isLoading) {
     return (
@@ -110,11 +127,11 @@ export default function ClubDetail() {
 
       <section style={panel}>
         <h2 style={sectionTitle}>Upcoming events</h2>
-        {events.length === 0 ? (
+        {upcomingEvents.length === 0 ? (
           <p style={emptyText}>No upcoming events for this club yet.</p>
         ) : (
           <ul style={eventList}>
-            {events.map((event) => (
+            {upcomingEvents.map((event) => (
               <li key={event.id} style={eventItem}>
                 <Link to={`/events/${event.id}`} style={eventLink}>
                   <span style={eventTitle}>{event.title}</span>
@@ -129,6 +146,30 @@ export default function ClubDetail() {
           </ul>
         )}
       </section>
+
+      {pastEvents.length > 0 ? (
+        <section style={panel}>
+          <h2 style={sectionTitle}>Past events</h2>
+          <p style={pastHint}>Ended activities — open a row for full details.</p>
+          <ul style={eventList}>
+            {pastEvents.map((event) => (
+              <li key={event.id} style={{ ...eventItem, opacity: 0.92 }}>
+                <Link to={`/events/${event.id}`} style={eventLink}>
+                  <span style={eventTitleRow}>
+                    <span style={pastTag}>Past</span>
+                    <span style={eventTitle}>{event.title}</span>
+                  </span>
+                  {event.start_time ? (
+                    <span style={eventDate}>
+                      {new Date(event.start_time).toLocaleString()}
+                    </span>
+                  ) : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -283,4 +324,29 @@ const eventDate = {
   fontSize: "12px",
   color: "#6b7280",
   fontWeight: 600,
+};
+
+const pastHint = {
+  margin: "0 0 12px 0",
+  fontSize: "13px",
+  color: "#6b7280",
+};
+
+const eventTitleRow = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const pastTag = {
+  flexShrink: 0,
+  padding: "2px 8px",
+  borderRadius: "999px",
+  background: "#e5e7eb",
+  color: "#374151",
+  fontSize: "10px",
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
 };

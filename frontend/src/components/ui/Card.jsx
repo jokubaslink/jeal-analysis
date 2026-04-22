@@ -9,6 +9,8 @@ export function Card({ className, children, ...props }) {
     <div
       className={cn(
         "rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[length:var(--space-11)] shadow-[var(--shadow-card)]",
+        "transition-[transform,box-shadow] duration-[var(--duration-normal)] [transition-timing-function:var(--ease-out)]",
+        "hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-strong)] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         className
       )}
       {...props}

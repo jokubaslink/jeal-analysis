@@ -116,7 +116,7 @@ export function LoadingState({
       icon={<Spinner label={title} />}
       action={action}
       align={align}
-      className={className}
+      className={cn("jeal-feedback-enter", className)}
       {...props}
     />
   );

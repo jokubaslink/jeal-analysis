@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
+import { mapApiValidationToFieldErrors, validateClubAdminForm } from "../../lib/adminFormValidation.js";
 import { Alert, Button, Card, CardDescription, CardTitle, Input, Label, Select, Textarea } from "../../components/ui/index.js";
+import AdminFieldError from "./AdminFieldError.jsx";
 
 const fieldClass = "flex flex-col gap-[length:var(--space-2)]";
 const hintClass = "m-0 text-[length:var(--font-size-caption)] text-[var(--color-ink-subtle)]";
+
 export default function AdminClubForm() {
   const { clubId } = useParams();
   const navigate = useNavigate();
@@ -23,6 +26,7 @@ export default function AdminClubForm() {
   const [isActive, setIsActive] = useState(true);
 
   const [submitError, setSubmitError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -59,32 +63,44 @@ export default function AdminClubForm() {
     };
   }, [clubId, isEditMode]);
 
+  const clearFieldError = (key) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setSubmitError("");
+  };
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitError("");
+    setFieldErrors({});
 
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setSubmitError("Club name is required.");
+    const { errors, trimmed } = validateClubAdminForm({
+      name,
+      description,
+      city,
+      location,
+      websiteUrl,
+    });
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setSubmitError("Please fix the fields below before saving.");
+      const first = document.querySelector("[aria-invalid='true']");
+      first?.focus?.();
       return;
     }
 
-    const urlTrim = websiteUrl.trim();
-    if (urlTrim) {
-      const low = urlTrim.toLowerCase();
-      if (!low.startsWith("http://") && !low.startsWith("https://")) {
-        setSubmitError("Website URL must start with http:// or https://.");
-        return;
-      }
-    }
-
     const body = {
-      name: trimmedName,
-      description: description.trim() || null,
+      name: trimmed.name,
+      description: trimmed.description,
       category_id: categoryId || null,
-      city: city.trim() || null,
-      location: location.trim() || null,
-      website_url: urlTrim || null,
+      city: trimmed.city,
+      location: trimmed.location,
+      website_url: trimmed.website_url,
       is_active: isActive,
     };
 
@@ -104,7 +120,13 @@ export default function AdminClubForm() {
         navigate("/admin/clubs", { state: { flashMessage: "Club created." } });
       }
     } catch (err) {
-      setSubmitError(err.message || (isEditMode ? "Could not update club." : "Could not create club."));
+      if (err.status === 422 && err.payload?.detail) {
+        const mapped = mapApiValidationToFieldErrors(err.payload.detail);
+        setFieldErrors(mapped);
+        setSubmitError("The server could not save this club. Fix the highlighted fields.");
+      } else {
+        setSubmitError(err.message || (isEditMode ? "Could not update club." : "Could not create club."));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -129,7 +151,7 @@ export default function AdminClubForm() {
         </div>
       ) : null}
 
-      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit}>
+      <form className="mt-[length:var(--space-10)] flex flex-col gap-[length:var(--space-7)]" onSubmit={handleSubmit} noValidate>
         <div className={fieldClass}>
           <Label htmlFor="club-name">
             Name <span className="text-[var(--color-error-text)]">*</span>
@@ -137,11 +159,16 @@ export default function AdminClubForm() {
           <Input
             id="club-name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              clearFieldError("name");
+            }}
             maxLength={255}
-            required
             autoComplete="off"
+            aria-invalid={fieldErrors.name ? "true" : "false"}
+            aria-describedby={fieldErrors.name ? "club-name-error" : undefined}
           />
+          <AdminFieldError id="club-name-error" message={fieldErrors.name} />
         </div>
 
         <div className={fieldClass}>
@@ -149,16 +176,31 @@ export default function AdminClubForm() {
           <Textarea
             id="club-description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              clearFieldError("description");
+            }}
             maxLength={1000}
             rows={5}
+            aria-invalid={fieldErrors.description ? "true" : "false"}
+            aria-describedby={fieldErrors.description ? "club-description-error" : undefined}
           />
+          <AdminFieldError id="club-description-error" message={fieldErrors.description} />
           <p className={hintClass}>Up to 1000 characters.</p>
         </div>
 
         <div className={fieldClass}>
           <Label htmlFor="club-category">Interest category</Label>
-          <Select id="club-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <Select
+            id="club-category"
+            value={categoryId}
+            onChange={(e) => {
+              setCategoryId(e.target.value);
+              clearFieldError("category_id");
+            }}
+            aria-invalid={fieldErrors.category_id ? "true" : "false"}
+            aria-describedby={fieldErrors.category_id ? "club-category-error" : undefined}
+          >
             <option value="">— None —</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -166,6 +208,7 @@ export default function AdminClubForm() {
               </option>
             ))}
           </Select>
+          <AdminFieldError id="club-category-error" message={fieldErrors.category_id} />
         </div>
 
         <div className={fieldClass}>
@@ -173,15 +216,32 @@ export default function AdminClubForm() {
           <Input
             id="club-city"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => {
+              setCity(e.target.value);
+              clearFieldError("city");
+            }}
             maxLength={100}
             autoComplete="address-level2"
+            aria-invalid={fieldErrors.city ? "true" : "false"}
+            aria-describedby={fieldErrors.city ? "club-city-error" : undefined}
           />
+          <AdminFieldError id="club-city-error" message={fieldErrors.city} />
         </div>
 
         <div className={fieldClass}>
           <Label htmlFor="club-location">Location / venue</Label>
-          <Input id="club-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={255} />
+          <Input
+            id="club-location"
+            value={location}
+            onChange={(e) => {
+              setLocation(e.target.value);
+              clearFieldError("location");
+            }}
+            maxLength={255}
+            aria-invalid={fieldErrors.location ? "true" : "false"}
+            aria-describedby={fieldErrors.location ? "club-location-error" : undefined}
+          />
+          <AdminFieldError id="club-location-error" message={fieldErrors.location} />
         </div>
 
         <div className={fieldClass}>
@@ -191,9 +251,16 @@ export default function AdminClubForm() {
             type="url"
             placeholder="https://"
             value={websiteUrl}
-            onChange={(e) => setWebsiteUrl(e.target.value)}
+            onChange={(e) => {
+              setWebsiteUrl(e.target.value);
+              clearFieldError("website_url");
+            }}
             maxLength={500}
+            aria-invalid={fieldErrors.website_url ? "true" : "false"}
+            aria-describedby={fieldErrors.website_url ? "club-website-error" : undefined}
           />
+          <AdminFieldError id="club-website-error" message={fieldErrors.website_url} />
+          <p className={hintClass}>Optional. Must include http:// or https:// when provided.</p>
         </div>
 
         <div className="flex items-center gap-[length:var(--space-4)]">
