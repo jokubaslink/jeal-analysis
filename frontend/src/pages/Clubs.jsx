@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { Alert, EmptyState, LoadingState } from "../components/ui/index.js";
 
@@ -33,16 +34,47 @@ export default function Clubs() {
       setErrorMessage("");
 
       try {
-        const [clubsResponse, categoriesResponse] = await Promise.all([
-          apiFetch("/clubs"),
-          apiFetch("/interest-categories"),
-        ]);
+        const [recommendedResult, allResult, categoriesResult] =
+          await Promise.allSettled([
+            apiFetch("/clubs/recommended?limit=50"),
+            apiFetch("/clubs"),
+            apiFetch("/interest-categories"),
+          ]);
 
         if (ignore) return;
 
-        const clubList = Array.isArray(clubsResponse) ? clubsResponse : [];
-        setClubs(clubList.filter((club) => club.is_active !== false));
-        setCategories(Array.isArray(categoriesResponse) ? categoriesResponse : []);
+        if (allResult.status !== "fulfilled") {
+          throw allResult.reason;
+        }
+
+        const allClubs = (Array.isArray(allResult.value) ? allResult.value : [])
+          .filter((club) => club.is_active !== false);
+
+        const scored =
+          recommendedResult.status === "fulfilled" &&
+          Array.isArray(recommendedResult.value)
+            ? recommendedResult.value
+            : [];
+
+        const scoreById = new Map();
+        scored.forEach((club) => {
+          scoreById.set(club.id, club.score ?? 0);
+        });
+
+        const ranked = allClubs
+          .map((club) => ({ ...club, score: scoreById.get(club.id) ?? 0 }))
+          .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return (a.name || "").localeCompare(b.name || "");
+          });
+
+        setClubs(ranked);
+        setCategories(
+          categoriesResult.status === "fulfilled" &&
+            Array.isArray(categoriesResult.value)
+            ? categoriesResult.value
+            : []
+        );
       } catch (error) {
         if (!ignore) {
           setErrorMessage(error.message || "Could not load clubs.");
@@ -279,9 +311,19 @@ export default function Clubs() {
 
                   <div style={styles.cardContent}>
                     <div style={styles.cardTopRow}>
-                      {club.category_name ? (
-                        <span style={styles.categoryBadge}>{club.category_name}</span>
-                      ) : <span />}
+                      <div style={styles.topBadgeStack}>
+                        {club.category_name ? (
+                          <span style={styles.categoryBadge}>{club.category_name}</span>
+                        ) : null}
+                        {club.score > 0 ? (
+                          <span
+                            style={styles.scoreBadge}
+                            title="Match score based on your interests"
+                          >
+                            ★ Match {club.score}
+                          </span>
+                        ) : null}
+                      </div>
                       {isLiked ? (
                         <span style={styles.likedBadge} aria-label="Liked">♥ Liked</span>
                       ) : null}
@@ -302,16 +344,21 @@ export default function Clubs() {
                         ) : null}
                       </div>
 
-                      {club.website_url ? (
-                        <a
-                          href={club.website_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={styles.websiteButton}
-                        >
-                          Visit website ↗
-                        </a>
-                      ) : null}
+                      <div style={styles.linkRow}>
+                        <Link to={`/clubs/${club.id}`} style={styles.detailsButton}>
+                          View details →
+                        </Link>
+                        {club.website_url ? (
+                          <a
+                            href={club.website_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={styles.websiteButton}
+                          >
+                            Visit website ↗
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div style={styles.cardBottomRow}>
@@ -598,8 +645,27 @@ const styles = {
     fontSize: "12px",
     fontWeight: 600,
   },
+  linkRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    alignItems: "center",
+  },
+  detailsButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "10px 16px",
+    borderRadius: "999px",
+    background: "#111827",
+    color: "white",
+    fontSize: "14px",
+    fontWeight: 700,
+    textDecoration: "none",
+    boxShadow: "0 8px 20px rgba(0, 0, 0, 0.3)",
+  },
   websiteButton: {
-    alignSelf: "flex-start",
+    display: "inline-flex",
+    alignItems: "center",
     padding: "10px 16px",
     borderRadius: "999px",
     background: "white",
@@ -608,6 +674,24 @@ const styles = {
     fontWeight: 700,
     textDecoration: "none",
     boxShadow: "0 8px 20px rgba(0, 0, 0, 0.25)",
+  },
+  topBadgeStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    alignItems: "flex-start",
+  },
+  scoreBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(250, 204, 21, 0.95)",
+    color: "#111827",
+    fontSize: "11px",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
   },
   cardBottomRow: {
     marginTop: "16px",

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { Alert, EmptyState, LoadingState } from "../components/ui/index.js";
 
@@ -101,16 +102,48 @@ export default function Events() {
       setErrorMessage("");
 
       try {
-        const [eventsResponse, categoriesResponse] = await Promise.all([
-          apiFetch("/events"),
-          apiFetch("/interest-categories"),
-        ]);
+        const [recommendedResult, allResult, categoriesResult] =
+          await Promise.allSettled([
+            apiFetch("/events/recommended?limit=50"),
+            apiFetch("/events"),
+            apiFetch("/interest-categories"),
+          ]);
 
         if (ignore) return;
 
-        const eventList = Array.isArray(eventsResponse) ? eventsResponse : [];
-        setEvents(eventList);
-        setCategories(Array.isArray(categoriesResponse) ? categoriesResponse : []);
+        if (allResult.status !== "fulfilled") {
+          throw allResult.reason;
+        }
+
+        const allEvents = Array.isArray(allResult.value) ? allResult.value : [];
+
+        const scored =
+          recommendedResult.status === "fulfilled" &&
+          Array.isArray(recommendedResult.value)
+            ? recommendedResult.value
+            : [];
+
+        const scoreById = new Map();
+        scored.forEach((event) => {
+          scoreById.set(event.id, event.score ?? 0);
+        });
+
+        const ranked = allEvents
+          .map((event) => ({ ...event, score: scoreById.get(event.id) ?? 0 }))
+          .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const aTime = a.start_time ? new Date(a.start_time).getTime() : Infinity;
+            const bTime = b.start_time ? new Date(b.start_time).getTime() : Infinity;
+            return aTime - bTime;
+          });
+
+        setEvents(ranked);
+        setCategories(
+          categoriesResult.status === "fulfilled" &&
+            Array.isArray(categoriesResult.value)
+            ? categoriesResult.value
+            : []
+        );
       } catch (error) {
         if (!ignore) {
           setErrorMessage(error.message || "Could not load events.");
@@ -454,6 +487,14 @@ export default function Events() {
                         ) : null}
                       </div>
                       <div style={styles.topBadgeStack}>
+                        {event.score > 0 ? (
+                          <span
+                            style={styles.scoreBadge}
+                            title="Match score based on your interests"
+                          >
+                            ★ Match {event.score}
+                          </span>
+                        ) : null}
                         {event.is_online ? (
                           <span style={styles.onlineBadge}>● Online</span>
                         ) : null}
@@ -484,16 +525,21 @@ export default function Events() {
                         ) : null}
                       </div>
 
-                      {event.registration_url ? (
-                        <a
-                          href={event.registration_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={styles.registerButton}
-                        >
-                          Register ↗
-                        </a>
-                      ) : null}
+                      <div style={styles.linkRow}>
+                        <Link to={`/events/${event.id}`} style={styles.detailsButton}>
+                          View details →
+                        </Link>
+                        {event.registration_url ? (
+                          <a
+                            href={event.registration_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={styles.registerButton}
+                          >
+                            Register ↗
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div style={styles.cardBottomRow}>
@@ -888,8 +934,27 @@ const styles = {
     fontSize: "12px",
     fontWeight: 600,
   },
+  linkRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    alignItems: "center",
+  },
+  detailsButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "10px 16px",
+    borderRadius: "999px",
+    background: "#111827",
+    color: "white",
+    fontSize: "14px",
+    fontWeight: 700,
+    textDecoration: "none",
+    boxShadow: "0 8px 20px rgba(0, 0, 0, 0.3)",
+  },
   registerButton: {
-    alignSelf: "flex-start",
+    display: "inline-flex",
+    alignItems: "center",
     padding: "10px 16px",
     borderRadius: "999px",
     background: "white",
@@ -898,6 +963,18 @@ const styles = {
     fontWeight: 700,
     textDecoration: "none",
     boxShadow: "0 8px 20px rgba(0, 0, 0, 0.25)",
+  },
+  scoreBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(250, 204, 21, 0.95)",
+    color: "#111827",
+    fontSize: "11px",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
   },
   cardBottomRow: {
     marginTop: "16px",

@@ -6,7 +6,9 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Interests from "./pages/Interests.jsx";
 import Results from "./pages/Results.jsx";
 import Clubs from "./pages/Clubs.jsx";
+import ClubDetail from "./pages/ClubDetail.jsx";
 import Events from "./pages/Events.jsx";
+import EventDetail from "./pages/EventDetail.jsx";
 import Layout from "./components/Layout.jsx";
 import AdminLayout from "./components/AdminLayout.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
@@ -24,8 +26,38 @@ export default function App() {
         <Route path="/" element={<OnboardingQuiz />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/clubs" element={<Clubs />} />
-        <Route path="/events" element={<Events />} />
+        <Route
+          path="/clubs"
+          element={
+            <ProtectedRoute>
+              <Clubs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clubs/:clubId"
+          element={
+            <ProtectedRoute>
+              <ClubDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/events"
+          element={
+            <ProtectedRoute>
+              <Events />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/events/:eventId"
+          element={
+            <ProtectedRoute>
+              <EventDetail />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/results"
