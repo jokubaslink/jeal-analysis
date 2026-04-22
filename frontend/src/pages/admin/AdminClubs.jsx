@@ -9,6 +9,7 @@ export default function AdminClubs() {
   const [clubsError, setClubsError] = useState("");
   const [clubsLoading, setClubsLoading] = useState(false);
   const [flashMessage, setFlashMessage] = useState("");
+  const [pendingVisibilityId, setPendingVisibilityId] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -17,7 +18,7 @@ export default function AdminClubs() {
 
     (async () => {
       try {
-        const list = await apiFetch("/clubs");
+        const list = await apiFetch("/admin/clubs");
         if (!ignore) setClubs(Array.isArray(list) ? list : []);
       } catch (e) {
         if (!ignore) setClubsError(e.message || "Could not load clubs.");
@@ -35,10 +36,42 @@ export default function AdminClubs() {
     setFlashMessage(location.state?.flashMessage || "");
   }, [location.state]);
 
+  async function handleVisibilityChange(club) {
+    const nextIsActive = !club.is_active;
+    const actionLabel = nextIsActive ? "reactivate" : "archive";
+    const confirmed = window.confirm(
+      `Are you sure you want to ${actionLabel} "${club.name}"?`,
+    );
+
+    if (!confirmed) return;
+
+    setPendingVisibilityId(club.id);
+    setClubsError("");
+    setFlashMessage("");
+
+    try {
+      const updatedClub = await apiFetch(`/admin/clubs/${club.id}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: nextIsActive }),
+      });
+
+      setClubs((currentClubs) =>
+        currentClubs.map((currentClub) =>
+          currentClub.id === club.id ? updatedClub : currentClub,
+        ),
+      );
+      setFlashMessage(nextIsActive ? "Club reactivated." : "Club archived.");
+    } catch (e) {
+      setClubsError(e.message || "Could not update club visibility.");
+    } finally {
+      setPendingVisibilityId("");
+    }
+  }
+
   return (
     <Card>
       <CardTitle>All clubs</CardTitle>
-      <CardDescription>Browse every club and open a dedicated page to create or edit a club.</CardDescription>
+      <CardDescription>Browse every club, edit details, and archive outdated clubs so they are hidden from users.</CardDescription>
 
       <div className="mt-[length:var(--space-7)] flex justify-end">
         <Link to="/admin/clubs/new">
@@ -64,13 +97,14 @@ export default function AdminClubs() {
             <tr className="border-b border-[var(--color-line)]">
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Name</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Category</th>
+              <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Status</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-right text-sm font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
             {clubsLoading ? (
               <tr>
-                <td colSpan={3} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
                   Loading clubs...
                 </td>
               </tr>
@@ -78,7 +112,7 @@ export default function AdminClubs() {
 
             {!clubsLoading && clubs.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
                   No clubs found.
                 </td>
               </tr>
@@ -88,9 +122,24 @@ export default function AdminClubs() {
               ? clubs.map((club) => (
                   <tr key={club.id} className="border-b border-[var(--color-line)]">
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.name}</td>
-                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.category_name || "—"}</td>
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.category_name || "â€”"}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
-                      <div className="flex justify-end">
+                      {club.is_active ? "Active" : "Archived"}
+                    </td>
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
+                      <div className="flex justify-end gap-[length:var(--space-3)]">
+                        <Button
+                          type="button"
+                          variant={club.is_active ? "secondary" : "default"}
+                          disabled={pendingVisibilityId === club.id}
+                          onClick={() => handleVisibilityChange(club)}
+                        >
+                          {pendingVisibilityId === club.id
+                            ? "Saving..."
+                            : club.is_active
+                              ? "Archive"
+                              : "Reactivate"}
+                        </Button>
                         <Link to={`/admin/clubs/${club.id}/edit`}>
                           <Button type="button" variant="secondary">
                             Edit

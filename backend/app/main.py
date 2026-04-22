@@ -173,6 +173,37 @@ class ClubUpdate(BaseModel):
     website_url: str | None = None
     is_active: bool | None = None
 
+    @field_validator("name")
+    @classmethod
+    def name_strip_non_empty(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            raise ValueError("Name cannot be empty.")
+        return s
+
+    @field_validator("description", "city", "location")
+    @classmethod
+    def optional_strip(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+    @field_validator("website_url")
+    @classmethod
+    def website_url_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("website_url must be an http(s) URL.")
+        return s
+
 
 class ClubOut(BaseModel):
     id: str
@@ -183,6 +214,10 @@ class ClubOut(BaseModel):
     city: str | None = None
     location: str | None = None
     website_url: str | None = None
+    is_active: bool
+
+
+class ClubVisibilityUpdate(BaseModel):
     is_active: bool
 
 
@@ -452,6 +487,48 @@ def _user_to_me_out(user: models.User) -> UserMeOut:
     )
 
 
+def _serialize_club(club: models.Club) -> ClubOut:
+    return ClubOut(
+        id=str(club.id),
+        name=club.name,
+        description=club.description,
+        category_id=str(club.category_id) if club.category_id else None,
+        category_name=club.category.name if club.category else None,
+        city=club.city,
+        location=club.location,
+        website_url=club.website_url,
+        is_active=club.is_active,
+    )
+
+
+def _get_club_or_404(
+    club_id: str,
+    *,
+    db: Session,
+    active_only: bool = False,
+) -> models.Club:
+    try:
+        club_uuid = uuid.UUID(club_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid club ID format.",
+        )
+
+    club = db.query(models.Club).filter(models.Club.id == club_uuid).first()
+    if not club:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Club not found.",
+        )
+    if active_only and not club.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Club not found.",
+        )
+    return club
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -674,6 +751,7 @@ def _build_recommended_clubs(
     clubs = (
         db.query(models.Club)
         .options(joinedload(models.Club.category))
+        .filter(models.Club.is_active.is_(True))
         .all()
     )
 
@@ -1100,21 +1178,41 @@ def create_club(
     db.commit()
     db.refresh(club)
 
-    return ClubOut(
-        id=str(club.id),
-        name=club.name,
-        description=club.description,
-        category_id=str(club.category_id) if club.category_id else None,
-        category_name=club.category.name if club.category else None,
-        city=club.city,
-        location=club.location,
-        website_url=club.website_url,
-        is_active=club.is_active,
-    )
+    return _serialize_club(club)
 
 
 @app.get("/clubs", response_model=list[ClubOut])
 def list_clubs(category_id: str | None = None, city: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(models.Club).join(
+        models.InterestCategory,
+        models.Club.category_id == models.InterestCategory.id,
+        isouter=True,
+    ).filter(models.Club.is_active.is_(True))
+
+    if category_id is not None:
+        try:
+            category_uuid = uuid.UUID(category_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid category ID format.",
+            )
+        query = query.filter(models.Club.category_id == category_uuid)
+
+    if city is not None:
+        query = query.filter(models.Club.city == city)
+
+    clubs = query.order_by(models.Club.name).all()
+    return [_serialize_club(club) for club in clubs]
+
+
+@app.get("/admin/clubs", response_model=list[ClubOut])
+def list_clubs_admin(
+    category_id: str | None = None,
+    city: str | None = None,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
     query = db.query(models.Club).join(
         models.InterestCategory,
         models.Club.category_id == models.InterestCategory.id,
@@ -1135,20 +1233,7 @@ def list_clubs(category_id: str | None = None, city: str | None = None, db: Sess
         query = query.filter(models.Club.city == city)
 
     clubs = query.order_by(models.Club.name).all()
-    return [
-        ClubOut(
-            id=str(c.id),
-            name=c.name,
-            description=c.description,
-            category_id=str(c.category_id) if c.category_id else None,
-            category_name=c.category.name if c.category else None,
-            city=c.city,
-            location=c.location,
-            website_url=c.website_url,
-            is_active=c.is_active,
-        )
-        for c in clubs
-    ]
+    return [_serialize_club(club) for club in clubs]
 
 
 @app.get("/clubs/recommended", response_model=list[RecommendedClubOut])
@@ -1173,51 +1258,26 @@ def list_recommended_clubs(
 
 @app.get("/clubs/{club_id}", response_model=ClubOut)
 def get_club(club_id: str, db: Session = Depends(get_db)):
-    try:
-        club_uuid = uuid.UUID(club_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid club ID format.",
-        )
+    return _serialize_club(_get_club_or_404(club_id, db=db, active_only=True))
 
-    club = db.query(models.Club).filter(models.Club.id == club_uuid).first()
-    if not club:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Club not found.",
-        )
 
-    return ClubOut(
-        id=str(club.id),
-        name=club.name,
-        description=club.description,
-        category_id=str(club.category_id) if club.category_id else None,
-        category_name=club.category.name if club.category else None,
-        city=club.city,
-        location=club.location,
-        website_url=club.website_url,
-        is_active=club.is_active,
-    )
+@app.get("/admin/clubs/{club_id}", response_model=ClubOut)
+def get_club_admin(
+    club_id: str,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    return _serialize_club(_get_club_or_404(club_id, db=db))
 
 
 @app.patch("/clubs/{club_id}", response_model=ClubOut)
-def update_club(club_id: str, payload: ClubUpdate, db: Session = Depends(get_db)):
-    try:
-        club_uuid = uuid.UUID(club_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid club ID format.",
-        )
-
-    club = db.query(models.Club).filter(models.Club.id == club_uuid).first()
-    if not club:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Club not found.",
-        )
-
+def update_club(
+    club_id: str,
+    payload: ClubUpdate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
     data = payload.model_dump(exclude_unset=True)
 
     if "category_id" in data:
@@ -1261,17 +1321,31 @@ def update_club(club_id: str, payload: ClubUpdate, db: Session = Depends(get_db)
     db.commit()
     db.refresh(club)
 
-    return ClubOut(
-        id=str(club.id),
-        name=club.name,
-        description=club.description,
-        category_id=str(club.category_id) if club.category_id else None,
-        category_name=club.category.name if club.category else None,
-        city=club.city,
-        location=club.location,
-        website_url=club.website_url,
-        is_active=club.is_active,
-    )
+    return _serialize_club(club)
+
+
+@app.patch("/admin/clubs/{club_id}", response_model=ClubOut)
+def update_club_admin(
+    club_id: str,
+    payload: ClubUpdate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    return update_club(club_id=club_id, payload=payload, _admin=_admin, db=db)
+
+
+@app.patch("/admin/clubs/{club_id}/visibility", response_model=ClubOut)
+def update_club_visibility_admin(
+    club_id: str,
+    payload: ClubVisibilityUpdate,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    club.is_active = payload.is_active
+    db.commit()
+    db.refresh(club)
+    return _serialize_club(club)
 
 
 @app.delete("/clubs/{club_id}", status_code=status.HTTP_204_NO_CONTENT)

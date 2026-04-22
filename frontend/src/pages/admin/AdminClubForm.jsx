@@ -37,7 +37,7 @@ export default function AdminClubForm() {
         setCategories(Array.isArray(cats) ? cats : []);
 
         if (isEditMode) {
-          const club = await apiFetch(`/clubs/${clubId}`);
+          const club = await apiFetch(`/admin/clubs/${clubId}`);
           if (ignore) return;
           setName(club.name || "");
           setDescription(club.description || "");
@@ -91,7 +91,7 @@ export default function AdminClubForm() {
     setIsSubmitting(true);
     try {
       if (isEditMode) {
-        await apiFetch(`/clubs/${clubId}`, {
+        await apiFetch(`/admin/clubs/${clubId}`, {
           method: "PATCH",
           body: JSON.stringify(body),
         });
