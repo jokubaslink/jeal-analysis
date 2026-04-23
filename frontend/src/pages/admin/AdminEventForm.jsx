@@ -29,6 +29,7 @@ export default function AdminEventForm() {
   const [location, setLocation] = useState("");
   const [isOnline, setIsOnline] = useState(false);
   const [registrationUrl, setRegistrationUrl] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
 
   const [submitError, setSubmitError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -59,6 +60,7 @@ export default function AdminEventForm() {
           setLocation(event.location || "");
           setIsOnline(Boolean(event.is_online));
           setRegistrationUrl(event.registration_url || "");
+          setImageUrl(event.image_url || "");
         }
       } catch (e) {
         if (!ignore) setLoadError(e.message || "Could not load form data.");
@@ -95,6 +97,7 @@ export default function AdminEventForm() {
       city,
       location,
       registrationUrl,
+      imageUrl,
     });
 
     if (Object.keys(errors).length > 0) {
@@ -116,6 +119,7 @@ export default function AdminEventForm() {
       location: trimmed.location,
       is_online: isOnline,
       registration_url: trimmed.registration_url,
+      image_url: trimmed.image_url,
     };
 
     setIsSubmitting(true);
@@ -347,6 +351,40 @@ export default function AdminEventForm() {
           />
           <AdminFieldError id="event-registration-error" message={fieldErrors.registration_url} />
           <p className={hintClass}>Optional. Must include http:// or https:// when provided.</p>
+        </div>
+
+        <div className={fieldClass}>
+          <Label htmlFor="event-image">Image URL</Label>
+          <Input
+            id="event-image"
+            type="url"
+            placeholder="https://"
+            value={imageUrl}
+            onChange={(e) => {
+              setImageUrl(e.target.value);
+              clearFieldError("image_url");
+            }}
+            maxLength={1000}
+            aria-invalid={fieldErrors.image_url ? "true" : "false"}
+            aria-describedby={fieldErrors.image_url ? "event-image-error" : undefined}
+          />
+          <AdminFieldError id="event-image-error" message={fieldErrors.image_url} />
+          <p className={hintClass}>Optional cover image (e.g. an Instagram post image). Must include http:// or https://.</p>
+          {imageUrl && imageUrl.trim() ? (
+            <div className="mt-[length:var(--space-3)]">
+              <img
+                src={imageUrl.trim()}
+                alt="Event cover preview"
+                className="max-h-48 rounded-lg border border-[var(--color-line)] object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+                onLoad={(e) => {
+                  e.currentTarget.style.display = "block";
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
         {submitError ? <Alert variant="error">{submitError}</Alert> : null}

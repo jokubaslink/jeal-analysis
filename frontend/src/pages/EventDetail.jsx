@@ -83,6 +83,20 @@ export default function EventDetail() {
         ← Back to events
       </Link>
 
+      {event.image_url ? (
+        <div style={imageWrap}>
+          <img
+            src={event.image_url}
+            alt={event.title}
+            style={imageStyle}
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        </div>
+      ) : null}
+
       <header style={hero}>
         <div style={topRow}>
           {event.category_name ? (
@@ -155,6 +169,23 @@ const backLink = {
   textDecoration: "none",
   fontWeight: 600,
   fontSize: "14px",
+};
+
+const imageWrap = {
+  width: "100%",
+  borderRadius: "24px",
+  overflow: "hidden",
+  border: "1px solid rgba(99, 102, 241, 0.18)",
+  boxShadow: "0 14px 36px rgba(15, 23, 42, 0.12)",
+  background: "#f3f4f6",
+};
+
+const imageStyle = {
+  width: "100%",
+  height: "auto",
+  maxHeight: "520px",
+  objectFit: "cover",
+  display: "block",
 };
 
 const hero = {

@@ -172,6 +172,7 @@ class Event(Base):
     is_active = Column(Boolean, nullable=False, server_default="true")
     is_online = Column(Boolean, nullable=False, server_default="false")
     registration_url = Column(String(500), nullable=True)
+    image_url = Column(String(1000), nullable=True)
 
     category = relationship("InterestCategory", back_populates="events")
     club = relationship("Club", back_populates="events")

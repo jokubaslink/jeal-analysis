@@ -245,6 +245,7 @@ class EventCreate(BaseModel):
     location: str | None = Field(None, max_length=255)
     is_online: bool | None = None
     registration_url: str | None = Field(None, max_length=500)
+    image_url: str | None = Field(None, max_length=1000)
 
     @field_validator("title")
     @classmethod
@@ -284,6 +285,19 @@ class EventCreate(BaseModel):
             raise ValueError("registration_url must be an http(s) URL.")
         return s
 
+    @field_validator("image_url")
+    @classmethod
+    def image_url_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("image_url must be an http(s) URL.")
+        return s
+
     @model_validator(mode="after")
     def end_not_before_start(self) -> "EventCreate":
         if self.end_time is not None and self.end_time < self.start_time:
@@ -302,6 +316,7 @@ class EventUpdate(BaseModel):
     location: str | None = None
     is_online: bool | None = None
     registration_url: str | None = None
+    image_url: str | None = None
 
     @field_validator("title")
     @classmethod
@@ -343,6 +358,19 @@ class EventUpdate(BaseModel):
             raise ValueError("registration_url must be an http(s) URL.")
         return s
 
+    @field_validator("image_url")
+    @classmethod
+    def image_url_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("image_url must be an http(s) URL.")
+        return s
+
     @model_validator(mode="after")
     def end_not_before_start(self) -> "EventUpdate":
         if self.end_time is not None and self.start_time is not None and self.end_time < self.start_time:
@@ -365,6 +393,7 @@ class EventOut(BaseModel):
     is_active: bool
     is_online: bool
     registration_url: str | None = None
+    image_url: str | None = None
 
 
 class EventVisibilityUpdate(BaseModel):
@@ -387,6 +416,7 @@ class RecommendedEventOut(BaseModel):
     location: str | None = None
     is_online: bool
     registration_url: str | None = None
+    image_url: str | None = None
     score: int
 
 
@@ -829,6 +859,7 @@ def _build_recommended_events(
             location=e.location,
             is_online=e.is_online,
             registration_url=e.registration_url,
+            image_url=e.image_url,
             score=score,
         )
         for score, e in top
@@ -898,6 +929,7 @@ def _serialize_event(event: models.Event) -> EventOut:
         is_active=event.is_active,
         is_online=event.is_online,
         registration_url=event.registration_url,
+        image_url=event.image_url,
     )
 
 
@@ -1428,27 +1460,14 @@ def create_event(
         is_active=True,
         is_online=payload.is_online if payload.is_online is not None else False,
         registration_url=payload.registration_url,
+        image_url=payload.image_url,
     )
 
     db.add(event)
     db.commit()
     db.refresh(event)
 
-    return EventOut(
-        id=str(event.id),
-        title=event.title,
-        description=event.description,
-        category_id=str(event.category_id) if event.category_id else None,
-        category_name=event.category.name if event.category else None,
-        club_id=str(event.club_id) if event.club_id else None,
-        club_name=event.club.name if event.club else None,
-        start_time=event.start_time.isoformat(),
-        end_time=event.end_time.isoformat() if event.end_time else None,
-        city=event.city,
-        location=event.location,
-        is_online=event.is_online,
-        registration_url=event.registration_url,
-    )
+    return _serialize_event(event)
 
 
 @app.get("/events", response_model=list[EventOut])
@@ -1624,6 +1643,8 @@ def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_
         event.is_online = data["is_online"]
     if "registration_url" in data:
         event.registration_url = data["registration_url"]
+    if "image_url" in data:
+        event.image_url = data["image_url"]
 
     db.commit()
     db.refresh(event)

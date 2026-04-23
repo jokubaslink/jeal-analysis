@@ -3,7 +3,7 @@ import { datetimeLocalToIso } from "./adminDatetime.js";
 /**
  * Optional URL: empty OK; otherwise must be http(s) and parse as URL.
  */
-export function validateOptionalHttpUrl(raw, label = "URL") {
+export function validateOptionalHttpUrl(raw, label = "URL", maxLength = 500) {
   const t = (raw || "").trim();
   if (!t) return { ok: true, value: null, error: null };
   const low = t.toLowerCase();
@@ -19,8 +19,8 @@ export function validateOptionalHttpUrl(raw, label = "URL") {
   } catch {
     return { ok: false, value: null, error: `${label} is not a valid web address.` };
   }
-  if (t.length > 500) {
-    return { ok: false, value: null, error: `${label} must be at most 500 characters.` };
+  if (t.length > maxLength) {
+    return { ok: false, value: null, error: `${label} must be at most ${maxLength} characters.` };
   }
   return { ok: true, value: t, error: null };
 }
@@ -72,6 +72,7 @@ export function validateEventAdminForm({
   city,
   location,
   registrationUrl,
+  imageUrl,
 }) {
   const errors = {};
 
@@ -108,6 +109,9 @@ export function validateEventAdminForm({
   const reg = validateOptionalHttpUrl(registrationUrl, "Registration URL");
   if (!reg.ok) errors.registration_url = reg.error;
 
+  const img = validateOptionalHttpUrl(imageUrl, "Image URL", 1000);
+  if (!img.ok) errors.image_url = img.error;
+
   return {
     errors,
     startIso,
@@ -118,6 +122,7 @@ export function validateEventAdminForm({
       city: cityT || null,
       location: locT || null,
       registration_url: reg.ok ? reg.value : null,
+      image_url: img.ok ? img.value : null,
     },
   };
 }

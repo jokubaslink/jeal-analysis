@@ -301,11 +301,23 @@ export default function Events() {
   }, [activeIndex, filteredEvents.length]);
 
   const handleInterested = (event) => {
+    const wasInterested = interestedIds.has(event.id);
+
     setInterestedIds((prev) => {
       const next = new Set(prev);
-      next.add(event.id);
+      if (wasInterested) {
+        next.delete(event.id);
+      } else {
+        next.add(event.id);
+      }
       return next;
     });
+
+    if (wasInterested) {
+      setFeedbackToast({ kind: "interested-undo", eventId: event.id });
+      return;
+    }
+
     setSkippedIds((prev) => {
       if (!prev.has(event.id)) return prev;
       const next = new Set(prev);
@@ -320,11 +332,23 @@ export default function Events() {
   };
 
   const handleSkip = (event) => {
+    const wasSkipped = skippedIds.has(event.id);
+
     setSkippedIds((prev) => {
       const next = new Set(prev);
-      next.add(event.id);
+      if (wasSkipped) {
+        next.delete(event.id);
+      } else {
+        next.add(event.id);
+      }
       return next;
     });
+
+    if (wasSkipped) {
+      setFeedbackToast({ kind: "skip-undo", eventId: event.id });
+      return;
+    }
+
     setInterestedIds((prev) => {
       if (!prev.has(event.id)) return prev;
       const next = new Set(prev);
@@ -546,6 +570,18 @@ export default function Events() {
                     filter: isSkipped ? "grayscale(0.6)" : "none",
                   }}
                 >
+                  {event.image_url ? (
+                    <img
+                      src={event.image_url}
+                      alt=""
+                      style={styles.cardImage}
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
                   <div style={styles.cardOverlay} aria-hidden="true" />
 
                   <div style={styles.cardContent}>
@@ -634,11 +670,14 @@ export default function Events() {
                         ...styles.actionButton,
                         ...(isSkipped ? styles.actionButtonSkippedActive : null),
                       }}
-                      aria-label="Skip this event"
-                      title="Skip"
+                      aria-label={isSkipped ? "Undo skip" : "Skip this event"}
+                      aria-pressed={isSkipped}
+                      title={isSkipped ? "Undo skip" : "Skip"}
                     >
                       <span style={styles.actionGlyph}>✕</span>
-                      <span style={styles.actionLabel}>Skip</span>
+                      <span style={styles.actionLabel}>
+                        {isSkipped ? "Undo" : "Skip"}
+                      </span>
                     </button>
 
                     <button
@@ -648,12 +687,14 @@ export default function Events() {
                         ...styles.actionButton,
                         ...(isInterested ? styles.actionButtonLikedActive : null),
                       }}
-                      aria-label="Mark interested"
+                      aria-label={isInterested ? "Remove interested" : "Mark interested"}
                       aria-pressed={isInterested}
-                      title="Interested"
+                      title={isInterested ? "Undo going" : "Interested"}
                     >
                       <span style={styles.actionGlyph}>♥</span>
-                      <span style={styles.actionLabel}>Going</span>
+                      <span style={styles.actionLabel}>
+                        {isInterested ? "Undo" : "Going"}
+                      </span>
                     </button>
 
                     {event.registration_url ? (
@@ -675,13 +716,20 @@ export default function Events() {
                     <div
                       style={{
                         ...styles.toast,
-                        ...(feedbackToast.kind === "interested"
+                        ...(feedbackToast.kind === "interested" ||
+                        feedbackToast.kind === "interested-undo"
                           ? styles.toastLike
                           : styles.toastSkip),
                       }}
                       aria-hidden="true"
                     >
-                      {feedbackToast.kind === "interested" ? "♥ Going" : "Skipped"}
+                      {feedbackToast.kind === "interested"
+                        ? "♥ Going"
+                        : feedbackToast.kind === "interested-undo"
+                          ? "Undo Going"
+                          : feedbackToast.kind === "skip-undo"
+                            ? "Undo Skip"
+                            : "Skipped"}
                     </div>
                   ) : null}
                 </article>
@@ -886,11 +934,20 @@ const styles = {
     display: "flex",
     transition: "transform 0.25s ease, opacity 0.25s ease, filter 0.3s ease",
   },
+  cardImage: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    zIndex: 0,
+    pointerEvents: "none",
+  },
   cardOverlay: {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.55) 100%)",
+      "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.18) 45%, rgba(0,0,0,0.7) 100%)",
     pointerEvents: "none",
   },
   cardContent: {
