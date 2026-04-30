@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
 export default function ClubDetail() {
   const { clubId } = useParams();
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [club, setClub] = useState(null);
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isMember, setIsMember] = useState(false);
+  const [isLoadingMembership, setIsLoadingMembership] = useState(true);
+  const [isSavingMembership, setIsSavingMembership] = useState(false);
+  const [membershipErrorMessage, setMembershipErrorMessage] = useState("");
 
   useEffect(() => {
     if (!clubId) return undefined;
@@ -46,6 +52,70 @@ export default function ClubDetail() {
       ignore = true;
     };
   }, [clubId]);
+
+  useEffect(() => {
+    if (!userId || !clubId) {
+      setIsMember(false);
+      setIsLoadingMembership(false);
+      setMembershipErrorMessage("");
+      return undefined;
+    }
+
+    let ignore = false;
+
+    const loadMembership = async () => {
+      setIsLoadingMembership(true);
+      setMembershipErrorMessage("");
+      try {
+        const list = await apiFetch(`/users/${userId}/joined-clubs`);
+        if (!ignore) {
+          setIsMember(
+            Array.isArray(list) && list.some((c) => String(c.id) === String(clubId))
+          );
+        }
+      } catch (error) {
+        if (!ignore) {
+          setMembershipErrorMessage(
+            error.message || "Could not load your membership status."
+          );
+        }
+      } finally {
+        if (!ignore) setIsLoadingMembership(false);
+      }
+    };
+
+    loadMembership();
+    return () => {
+      ignore = true;
+    };
+  }, [clubId, userId]);
+
+  const handleToggleMembership = async () => {
+    if (!clubId) return;
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    setIsSavingMembership(true);
+    setMembershipErrorMessage("");
+
+    try {
+      if (isMember) {
+        await apiFetch(`/clubs/${clubId}/join`, { method: "DELETE" });
+        setIsMember(false);
+      } else {
+        await apiFetch(`/clubs/${clubId}/join`, { method: "POST" });
+        setIsMember(true);
+      }
+    } catch (error) {
+      setMembershipErrorMessage(
+        error.message || "Could not update your club membership."
+      );
+    } finally {
+      setIsSavingMembership(false);
+    }
+  };
 
   const { upcomingEvents, pastEvents } = useMemo(() => {
     const upcoming = [];
@@ -106,15 +176,42 @@ export default function ClubDetail() {
             <span style={inactivePill}>Inactive</span>
           ) : null}
         </div>
-        {club.website_url ? (
-          <a
-            href={club.website_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={websiteButton}
+        <div style={heroActions}>
+          {club.website_url ? (
+            <a
+              href={club.website_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={websiteButton}
+            >
+              Visit website ↗
+            </a>
+          ) : null}
+          <Button
+            variant={isMember ? "secondary" : "primary"}
+            onClick={handleToggleMembership}
+            disabled={
+              isSavingMembership ||
+              isLoadingMembership ||
+              (club.is_active === false && !isMember)
+            }
           >
-            Visit website ↗
-          </a>
+            {isLoadingMembership
+              ? "Checking membership..."
+              : isSavingMembership
+                ? "Saving..."
+                : !userId
+                  ? "Log in to join"
+                  : isMember
+                    ? "Leave club"
+                    : "Join club"}
+          </Button>
+        </div>
+        {club.is_active === false && !isMember ? (
+          <p style={membershipHint}>Inactive clubs are not open for new members.</p>
+        ) : null}
+        {membershipErrorMessage ? (
+          <Alert variant="error">{membershipErrorMessage}</Alert>
         ) : null}
       </header>
 
@@ -248,9 +345,23 @@ const inactivePill = {
   color: "#b91c1c",
 };
 
-const websiteButton = {
+const heroActions = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "10px",
   alignSelf: "flex-start",
   marginTop: "4px",
+};
+
+const membershipHint = {
+  margin: 0,
+  fontSize: "13px",
+  color: "#b45309",
+  fontWeight: 600,
+};
+
+const websiteButton = {
   padding: "10px 18px",
   borderRadius: "999px",
   background: "#111827",

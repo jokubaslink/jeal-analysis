@@ -30,6 +30,8 @@ export default function Dashboard() {
   const [registeredEvents, setRegisteredEvents] = useState([]);
   const [isLoadingRegisteredEvents, setIsLoadingRegisteredEvents] = useState(true);
   const [registeredEventsErrorMessage, setRegisteredEventsErrorMessage] = useState("");
+  const [joinedClubs, setJoinedClubs] = useState([]);
+  const [joinedClubsErrorMessage, setJoinedClubsErrorMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -94,12 +96,25 @@ export default function Dashboard() {
               error.message || "Could not load your registered events.";
           }
 
+          let joinedClubsPayload = [];
+          let joinedClubsErr = "";
+          try {
+            const jc = await apiFetch(`/users/${userId}/joined-clubs`);
+            joinedClubsPayload = Array.isArray(jc) ? jc : [];
+          } catch (error) {
+            joinedClubsPayload = [];
+            joinedClubsErr =
+              error.message || "Could not load your clubs.";
+          }
+
           if (!ignore) {
             setUserInterests(interestsPayload);
             setRecommendedClubs(recommendedClubsPayload);
             setRecommendedEvents(recommendedEventsPayload);
             setRegisteredEvents(registeredEventsPayload);
             setRegisteredEventsErrorMessage(registeredEventsError);
+            setJoinedClubs(joinedClubsPayload);
+            setJoinedClubsErrorMessage(joinedClubsErr);
           }
         } else {
           if (!ignore) {
@@ -108,6 +123,8 @@ export default function Dashboard() {
             setRecommendedEvents([]);
             setRegisteredEvents([]);
             setRegisteredEventsErrorMessage("");
+            setJoinedClubs([]);
+            setJoinedClubsErrorMessage("");
           }
         }
 
@@ -150,6 +167,13 @@ export default function Dashboard() {
     () => recommendedEvents.filter((event) => !isEventPast(event)),
     [recommendedEvents]
   );
+
+  const registeredEventsSorted = useMemo(() => {
+    return [...(registeredEvents || [])].sort(
+      (a, b) =>
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+  }, [registeredEvents]);
 
   const hasSavedInterests = Boolean(userId && userInterests.length > 0);
 
@@ -283,9 +307,9 @@ export default function Dashboard() {
         <section style={card}>
           <div style={profileHeader}>
             <div>
-              <h2 style={sectionTitle}>Your calendar</h2>
+              <h2 style={sectionTitle}>Your calendar &amp; events</h2>
               <p style={profileSubtext}>
-                See the events you have marked as registered in a monthly view.
+                Month view shows when you&apos;re booked. Registered event links below are shortcuts to detail pages.
               </p>
             </div>
           </div>
@@ -293,23 +317,83 @@ export default function Dashboard() {
           {isLoadingRegisteredEvents ? (
             <LoadingState
               align="left"
-              title="Loading your calendar"
-              description="Fetching the events on your schedule."
+              title="Loading your events"
+              description="Fetching the events you've registered for."
             />
           ) : !userId ? (
             <EmptyState
               align="left"
-              title="Log in to view your calendar"
-              description="Your registered events will appear here after sign in."
+              title="Log in to see your calendar"
+              description="Your registered events and calendar appear only for your account."
             />
           ) : (
             <>
-              <RegisteredEventsCalendar events={registeredEvents} />
               {registeredEventsErrorMessage ? (
-                <Alert variant="error" className="mt-[10px]">
+                <Alert variant="error" style={{ marginBottom: 14 }}>
                   {registeredEventsErrorMessage}
                 </Alert>
               ) : null}
+
+              <RegisteredEventsCalendar events={registeredEvents} />
+
+              {!registeredEventsErrorMessage ? (
+                <div style={attendingLinksBlock}>
+                  <h3 style={attendingLinksHeading}>Events you&apos;re attending</h3>
+                  {registeredEvents.length === 0 ? (
+                    <EmptyState
+                      align="left"
+                      title="No events registered yet"
+                      description={`Open an event and choose "I'm attending" to populate this list.`}
+                      action={
+                        <Button asChild variant="primary">
+                          <Link to="/events">Browse events</Link>
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <ul style={attendingLinksList}>
+                      {registeredEventsSorted.map((evt) => (
+                        <li key={evt.id} style={attendingLinksItem}>
+                          <Link to={`/events/${evt.id}`} style={attendingLinksOnly}>
+                            {evt.title}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+
+              <div style={joinedClubsBlock}>
+                <h3 style={joinedClubsHeading}>Clubs you&apos;ve joined</h3>
+                {joinedClubsErrorMessage ? (
+                  <Alert variant="error">{joinedClubsErrorMessage}</Alert>
+                ) : joinedClubs.length === 0 ? (
+                  <EmptyState
+                    align="left"
+                    title="No clubs joined yet"
+                    description='Open a club and use “Join club” on its page to appear here.'
+                    action={
+                      <Button asChild variant="secondary">
+                        <Link to="/clubs">Browse clubs</Link>
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <div style={joinedClubsGrid}>
+                    {joinedClubs.map((club) => (
+                      <article key={club.id} style={joinedClubCard}>
+                        <Link to={`/clubs/${club.id}`} style={joinedClubCardTitle}>
+                          {club.name}
+                        </Link>
+                        <p style={joinedClubCategoryLine}>
+                          {club.category_name || "Uncategorized"}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </section>
@@ -1068,4 +1152,86 @@ const recommendedEventDetailLink = {
   fontWeight: 700,
   color: "#1d4ed8",
   textDecoration: "none",
+};
+
+const attendingLinksBlock = {
+  marginTop: "24px",
+  paddingTop: "20px",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const attendingLinksHeading = {
+  margin: "0 0 14px",
+  fontSize: "14px",
+  fontWeight: 800,
+  color: "#374151",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+};
+
+const attendingLinksList = {
+  margin: 0,
+  padding: "0 0 0 18px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+const attendingLinksItem = {
+  margin: 0,
+  padding: 0,
+  lineHeight: 1.45,
+};
+
+const attendingLinksOnly = {
+  color: "#1d4ed8",
+  fontSize: "15px",
+  fontWeight: 600,
+  textDecoration: "underline",
+};
+
+const joinedClubsBlock = {
+  marginTop: "24px",
+  paddingTop: "20px",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const joinedClubsHeading = {
+  margin: "0 0 14px",
+  fontSize: "14px",
+  fontWeight: 800,
+  color: "#374151",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+};
+
+const joinedClubsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+  gap: "12px",
+};
+
+const joinedClubCard = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  border: "1px solid #e5e7eb",
+  background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
+};
+
+const joinedClubCardTitle = {
+  margin: 0,
+  fontSize: "16px",
+  fontWeight: 700,
+  color: "#111827",
+  textDecoration: "none",
+};
+
+const joinedClubCategoryLine = {
+  margin: 0,
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "#6b7280",
 };
