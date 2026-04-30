@@ -217,6 +217,10 @@ class ClubOut(BaseModel):
     is_active: bool
 
 
+class JoinedClubOut(ClubOut):
+    joined_at: str
+
+
 class ClubVisibilityUpdate(BaseModel):
     is_active: bool
 
@@ -535,6 +539,13 @@ def _serialize_club(club: models.Club) -> ClubOut:
     )
 
 
+def _serialize_joined_club(membership: models.UserClubMembership) -> JoinedClubOut:
+    return JoinedClubOut(
+        **_serialize_club(membership.club).model_dump(),
+        joined_at=membership.created_at.isoformat(),
+    )
+
+
 def _get_club_or_404(
     club_id: str,
     *,
@@ -657,7 +668,7 @@ def _require_self_or_admin(target_user_id: str, current_user: models.User) -> No
     if str(current_user.id) != target_user_id and not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this user's registrations.",
+            detail="You do not have permission to access this user's data.",
         )
 
 
@@ -1660,6 +1671,89 @@ def unregister_for_event(
     )
     if registration:
         db.delete(registration)
+        db.commit()
+    return
+
+
+@app.get("/users/{user_id}/joined-clubs", response_model=list[JoinedClubOut])
+def list_joined_clubs(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Clubs this user has joined (memberships). Caller must be this user or an admin."""
+    _require_self_or_admin(user_id, current_user)
+
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format.",
+        )
+
+    rows = (
+        db.query(models.UserClubMembership)
+        .options(joinedload(models.UserClubMembership.club).joinedload(models.Club.category))
+        .join(models.Club, models.UserClubMembership.club_id == models.Club.id)
+        .filter(models.UserClubMembership.user_id == user_uuid)
+        .order_by(models.Club.name.asc())
+        .all()
+    )
+    return [_serialize_joined_club(row) for row in rows]
+
+
+@app.post("/clubs/{club_id}/join", response_model=JoinedClubOut)
+def join_club(
+    club_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record membership in an active club (idempotent)."""
+    club = _get_club_or_404(club_id, db=db, active_only=True)
+
+    existing = (
+        db.query(models.UserClubMembership)
+        .filter(models.UserClubMembership.user_id == current_user.id)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if existing is None:
+        db.add(
+            models.UserClubMembership(
+                user_id=current_user.id,
+                club_id=club.id,
+            )
+        )
+        db.commit()
+
+    membership = (
+        db.query(models.UserClubMembership)
+        .options(joinedload(models.UserClubMembership.club).joinedload(models.Club.category))
+        .filter(models.UserClubMembership.user_id == current_user.id)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Club not found.")
+    return _serialize_joined_club(membership)
+
+
+@app.delete("/clubs/{club_id}/join", status_code=status.HTTP_204_NO_CONTENT)
+def leave_club(
+    club_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    row = (
+        db.query(models.UserClubMembership)
+        .filter(models.UserClubMembership.user_id == current_user.id)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if row:
+        db.delete(row)
         db.commit()
     return
 
