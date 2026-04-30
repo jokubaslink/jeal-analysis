@@ -396,6 +396,10 @@ class EventOut(BaseModel):
     image_url: str | None = None
 
 
+class RegisteredEventOut(EventOut):
+    registered_at: str
+
+
 class EventVisibilityUpdate(BaseModel):
     is_active: bool
 
@@ -647,6 +651,14 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @app.get("/me", response_model=UserMeOut)
 def get_me(current_user: models.User = Depends(get_current_user)):
     return _user_to_me_out(current_user)
+
+
+def _require_self_or_admin(target_user_id: str, current_user: models.User) -> None:
+    if str(current_user.id) != target_user_id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this user's registrations.",
+        )
 
 
 @app.get("/users/{user_id}", response_model=UserOut)
@@ -930,6 +942,30 @@ def _serialize_event(event: models.Event) -> EventOut:
         is_online=event.is_online,
         registration_url=event.registration_url,
         image_url=event.image_url,
+    )
+
+
+def _serialize_registered_event(
+    registration: models.UserEventRegistration,
+) -> RegisteredEventOut:
+    event = registration.event
+    return RegisteredEventOut(
+        id=str(event.id),
+        title=event.title,
+        description=event.description,
+        category_id=str(event.category_id) if event.category_id else None,
+        category_name=event.category.name if event.category else None,
+        club_id=str(event.club_id) if event.club_id else None,
+        club_name=event.club.name if event.club else None,
+        start_time=event.start_time.isoformat(),
+        end_time=event.end_time.isoformat() if event.end_time else None,
+        city=event.city,
+        location=event.location,
+        is_active=event.is_active,
+        is_online=event.is_online,
+        registration_url=event.registration_url,
+        image_url=event.image_url,
+        registered_at=registration.created_at.isoformat(),
     )
 
 
@@ -1530,6 +1566,102 @@ def list_recommended_events(
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
     return _build_recommended_events(category_interest_counts, limit=limit_value, db=db)
+
+
+@app.get("/users/{user_id}/registered-events", response_model=list[RegisteredEventOut])
+def list_registered_events(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_or_admin(user_id, current_user)
+
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format.",
+        )
+
+    registrations = (
+        db.query(models.UserEventRegistration)
+        .options(
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.category),
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.club),
+        )
+        .join(models.Event, models.UserEventRegistration.event_id == models.Event.id)
+        .filter(models.UserEventRegistration.user_id == user_uuid)
+        .filter(models.Event.is_active.is_(True))
+        .order_by(models.Event.start_time.asc())
+        .all()
+    )
+
+    return [_serialize_registered_event(registration) for registration in registrations]
+
+
+@app.post("/events/{event_id}/register", response_model=RegisteredEventOut)
+def register_for_event(
+    event_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db, active_only=True)
+
+    event_start = event.start_time
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=timezone.utc)
+    if event_start <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Past events cannot be registered.",
+        )
+
+    registration = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.user_id == current_user.id)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .first()
+    )
+
+    if registration is None:
+        registration = models.UserEventRegistration(
+            user_id=current_user.id,
+            event_id=event.id,
+        )
+        db.add(registration)
+        db.commit()
+
+    registration = (
+        db.query(models.UserEventRegistration)
+        .options(
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.category),
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.club),
+        )
+        .filter(models.UserEventRegistration.user_id == current_user.id)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .first()
+    )
+    return _serialize_registered_event(registration)
+
+
+@app.delete("/events/{event_id}/register", status_code=status.HTTP_204_NO_CONTENT)
+def unregister_for_event(
+    event_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    registration = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.user_id == current_user.id)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .first()
+    )
+    if registration:
+        db.delete(registration)
+        db.commit()
+    return
 
 
 @app.get("/recommendations", response_model=RecommendationsOut)

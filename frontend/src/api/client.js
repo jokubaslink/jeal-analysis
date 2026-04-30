@@ -32,9 +32,16 @@ export async function apiFetch(path, options = {}) {
   });
 
   const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
+  let payload = null;
+
+  if (response.status !== 204 && response.status !== 205) {
+    const rawBody = await response.text();
+    if (contentType.includes("application/json")) {
+      payload = rawBody ? JSON.parse(rawBody) : null;
+    } else {
+      payload = rawBody;
+    }
+  }
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;

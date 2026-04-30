@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
+import RegisteredEventsCalendar from "../components/RegisteredEventsCalendar.jsx";
 import { isEventPast } from "../lib/eventTime.js";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
 import { Alert, Button, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
@@ -26,6 +27,9 @@ export default function Dashboard() {
   const [isLoadingRecommendedClubs, setIsLoadingRecommendedClubs] = useState(true);
   const [recommendedEvents, setRecommendedEvents] = useState([]);
   const [isLoadingRecommendedEvents, setIsLoadingRecommendedEvents] = useState(true);
+  const [registeredEvents, setRegisteredEvents] = useState([]);
+  const [isLoadingRegisteredEvents, setIsLoadingRegisteredEvents] = useState(true);
+  const [registeredEventsErrorMessage, setRegisteredEventsErrorMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -79,16 +83,31 @@ export default function Dashboard() {
             recommendedEventsPayload = [];
           }
 
+          let registeredEventsPayload = [];
+          let registeredEventsError = "";
+          try {
+            const raw = await apiFetch(`/users/${userId}/registered-events`);
+            registeredEventsPayload = Array.isArray(raw) ? raw : [];
+          } catch (error) {
+            registeredEventsPayload = [];
+            registeredEventsError =
+              error.message || "Could not load your registered events.";
+          }
+
           if (!ignore) {
             setUserInterests(interestsPayload);
             setRecommendedClubs(recommendedClubsPayload);
             setRecommendedEvents(recommendedEventsPayload);
+            setRegisteredEvents(registeredEventsPayload);
+            setRegisteredEventsErrorMessage(registeredEventsError);
           }
         } else {
           if (!ignore) {
             setUserInterests([]);
             setRecommendedClubs([]);
             setRecommendedEvents([]);
+            setRegisteredEvents([]);
+            setRegisteredEventsErrorMessage("");
           }
         }
 
@@ -106,6 +125,7 @@ export default function Dashboard() {
           setIsLoadingInterests(false);
           setIsLoadingRecommendedClubs(false);
           setIsLoadingRecommendedEvents(false);
+          setIsLoadingRegisteredEvents(false);
         }
       }
     };
@@ -260,6 +280,40 @@ export default function Dashboard() {
       </div>
 
       <div style={grid}>
+        <section style={card}>
+          <div style={profileHeader}>
+            <div>
+              <h2 style={sectionTitle}>Your calendar</h2>
+              <p style={profileSubtext}>
+                See the events you have marked as registered in a monthly view.
+              </p>
+            </div>
+          </div>
+
+          {isLoadingRegisteredEvents ? (
+            <LoadingState
+              align="left"
+              title="Loading your calendar"
+              description="Fetching the events on your schedule."
+            />
+          ) : !userId ? (
+            <EmptyState
+              align="left"
+              title="Log in to view your calendar"
+              description="Your registered events will appear here after sign in."
+            />
+          ) : (
+            <>
+              <RegisteredEventsCalendar events={registeredEvents} />
+              {registeredEventsErrorMessage ? (
+                <Alert variant="error" className="mt-[10px]">
+                  {registeredEventsErrorMessage}
+                </Alert>
+              ) : null}
+            </>
+          )}
+        </section>
+
         <section style={card}>
           <div style={profileHeader}>
             <div>

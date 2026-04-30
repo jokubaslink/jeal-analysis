@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
@@ -21,9 +22,14 @@ function formatDate(value) {
 export default function EventDetail() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [event, setEvent] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [isLoadingRegistration, setIsLoadingRegistration] = useState(true);
+  const [isSavingRegistration, setIsSavingRegistration] = useState(false);
+  const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
 
   useEffect(() => {
     if (!eventId) return undefined;
@@ -49,6 +55,71 @@ export default function EventDetail() {
       ignore = true;
     };
   }, [eventId]);
+
+  useEffect(() => {
+    if (!userId || !eventId) {
+      setIsRegistered(false);
+      setIsLoadingRegistration(false);
+      setRegistrationErrorMessage("");
+      return undefined;
+    }
+
+    let ignore = false;
+
+    const loadRegistrationState = async () => {
+      setIsLoadingRegistration(true);
+      setRegistrationErrorMessage("");
+      try {
+        const registeredEvents = await apiFetch(`/users/${userId}/registered-events`);
+        if (!ignore) {
+          setIsRegistered(
+            Array.isArray(registeredEvents) &&
+              registeredEvents.some((registeredEvent) => registeredEvent.id === eventId)
+          );
+        }
+      } catch (error) {
+        if (!ignore) {
+          setRegistrationErrorMessage(
+            error.message || "Could not load your registration status."
+          );
+        }
+      } finally {
+        if (!ignore) setIsLoadingRegistration(false);
+      }
+    };
+
+    loadRegistrationState();
+    return () => {
+      ignore = true;
+    };
+  }, [eventId, userId]);
+
+  const handleToggleRegistration = async () => {
+    if (!eventId) return;
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    setIsSavingRegistration(true);
+    setRegistrationErrorMessage("");
+
+    try {
+      if (isRegistered) {
+        await apiFetch(`/events/${eventId}/register`, { method: "DELETE" });
+        setIsRegistered(false);
+      } else {
+        await apiFetch(`/events/${eventId}/register`, { method: "POST" });
+        setIsRegistered(true);
+      }
+    } catch (error) {
+      setRegistrationErrorMessage(
+        error.message || "Could not update your registered events."
+      );
+    } finally {
+      setIsSavingRegistration(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -80,7 +151,7 @@ export default function EventDetail() {
   return (
     <div style={page}>
       <Link to="/events" style={backLink}>
-        ← Back to events
+        Back to events
       </Link>
 
       {event.image_url ? (
@@ -103,9 +174,7 @@ export default function EventDetail() {
             <span style={categoryBadge}>{event.category_name}</span>
           ) : null}
           {past ? <span style={pastBadge}>Past</span> : null}
-          {event.is_online ? (
-            <span style={onlineBadge}>● Online</span>
-          ) : null}
+          {event.is_online ? <span style={onlineBadge}>Online</span> : null}
         </div>
         <h1 style={title}>{event.title}</h1>
 
@@ -121,25 +190,44 @@ export default function EventDetail() {
         ) : null}
 
         <div style={metaRow}>
-          <span style={metaPill}>🗓 {formatDate(event.start_time)}</span>
+          <span style={metaPill}>{formatDate(event.start_time)}</span>
           {event.end_time ? (
-            <span style={metaPill}>⏱ Ends {formatDate(event.end_time)}</span>
+            <span style={metaPill}>Ends {formatDate(event.end_time)}</span>
           ) : null}
-          {event.city ? <span style={metaPill}>📍 {event.city}</span> : null}
-          {event.location ? (
-            <span style={metaPill}>🏛 {event.location}</span>
-          ) : null}
+          {event.city ? <span style={metaPill}>{event.city}</span> : null}
+          {event.location ? <span style={metaPill}>{event.location}</span> : null}
         </div>
 
-        {event.registration_url ? (
-          <a
-            href={event.registration_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={registerButton}
+        <div style={actionRow}>
+          {event.registration_url ? (
+            <a
+              href={event.registration_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={registerButton}
+            >
+              Register
+            </a>
+          ) : null}
+          <Button
+            variant={isRegistered ? "secondary" : "primary"}
+            onClick={handleToggleRegistration}
+            disabled={isSavingRegistration || isLoadingRegistration || (past && !isRegistered)}
           >
-            Register ↗
-          </a>
+            {isLoadingRegistration
+              ? "Checking status..."
+              : isSavingRegistration
+                ? "Saving..."
+                : isRegistered
+                  ? "Remove from my calendar"
+                  : "I'm registered"}
+          </Button>
+        </div>
+        {past && !isRegistered ? (
+          <p style={helperText}>Past events cannot be added to your dashboard calendar.</p>
+        ) : null}
+        {registrationErrorMessage ? (
+          <Alert variant="error">{registrationErrorMessage}</Alert>
         ) : null}
       </header>
 
@@ -277,6 +365,13 @@ const metaPill = {
   fontWeight: 600,
 };
 
+const actionRow = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "12px",
+  alignItems: "center",
+};
+
 const registerButton = {
   alignSelf: "flex-start",
   marginTop: "4px",
@@ -288,6 +383,13 @@ const registerButton = {
   fontWeight: 700,
   textDecoration: "none",
   boxShadow: "0 8px 20px rgba(15, 23, 42, 0.15)",
+};
+
+const helperText = {
+  margin: 0,
+  color: "#6b7280",
+  fontSize: "13px",
+  lineHeight: 1.5,
 };
 
 const panel = {

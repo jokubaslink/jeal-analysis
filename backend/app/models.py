@@ -33,6 +33,11 @@ class User(Base):
 
     # Relationships
     interests = relationship("UserInterest", back_populates="user", cascade="all, delete-orphan")
+    registered_events = relationship(
+        "UserEventRegistration",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     # Timestamps
     created_at = Column(
@@ -176,6 +181,11 @@ class Event(Base):
 
     category = relationship("InterestCategory", back_populates="events")
     club = relationship("Club", back_populates="events")
+    registrations = relationship(
+        "UserEventRegistration",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -187,4 +197,20 @@ class Event(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class UserEventRegistration(Base):
+    __tablename__ = "user_event_registrations"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+
+    user = relationship("User", back_populates="registered_events")
+    event = relationship("Event", back_populates="registrations")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
