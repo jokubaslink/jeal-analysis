@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import {
+  emitClubMembershipChanged,
+  fetchJoinedClubs,
+  subscribeToClubMembershipChanges,
+} from "../lib/clubMemberships.js";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
@@ -67,7 +72,7 @@ export default function ClubDetail() {
       setIsLoadingMembership(true);
       setMembershipErrorMessage("");
       try {
-        const list = await apiFetch(`/users/${userId}/joined-clubs`);
+        const list = await fetchJoinedClubs(userId);
         if (!ignore) {
           setIsMember(
             Array.isArray(list) && list.some((c) => String(c.id) === String(clubId))
@@ -90,6 +95,16 @@ export default function ClubDetail() {
     };
   }, [clubId, userId]);
 
+  useEffect(() => {
+    if (!clubId) return undefined;
+
+    return subscribeToClubMembershipChanges(({ type, clubId: changedClubId }) => {
+      if (String(changedClubId) !== String(clubId)) return;
+      setIsMember(type === "joined");
+      setMembershipErrorMessage("");
+    });
+  }, [clubId]);
+
   const handleToggleMembership = async () => {
     if (!clubId) return;
     if (!userId) {
@@ -104,9 +119,11 @@ export default function ClubDetail() {
       if (isMember) {
         await apiFetch(`/clubs/${clubId}/join`, { method: "DELETE" });
         setIsMember(false);
+        emitClubMembershipChanged({ type: "left", clubId });
       } else {
-        await apiFetch(`/clubs/${clubId}/join`, { method: "POST" });
+        const joinedClub = await apiFetch(`/clubs/${clubId}/join`, { method: "POST" });
         setIsMember(true);
+        emitClubMembershipChanged({ type: "joined", clubId, club: joinedClub });
       }
     } catch (error) {
       setMembershipErrorMessage(

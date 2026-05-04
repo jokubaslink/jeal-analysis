@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import {
+  createJoinedClubIdSet,
+  emitClubMembershipChanged,
+  fetchJoinedClubs,
+  subscribeToClubMembershipChanges,
+} from "../lib/clubMemberships.js";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
@@ -30,6 +36,10 @@ export default function Clubs() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [likedIds, setLikedIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
+  const [joinedClubIds, setJoinedClubIds] = useState(() => new Set());
+  const [isLoadingMemberships, setIsLoadingMemberships] = useState(true);
+  const [membershipErrorMessage, setMembershipErrorMessage] = useState("");
+  const [pendingMembershipClubId, setPendingMembershipClubId] = useState(null);
   const [feedbackToast, setFeedbackToast] = useState(null);
 
   const scrollerRef = useRef(null);
@@ -40,15 +50,18 @@ export default function Clubs() {
 
     const loadData = async () => {
       setIsLoading(true);
+      setIsLoadingMemberships(true);
       setErrorMessage("");
+      setMembershipErrorMessage("");
       setSavedInterestCount(null);
 
       try {
-        const [allResult, categoriesResult, recommendedResult] =
+        const [allResult, categoriesResult, recommendedResult, joinedClubsResult] =
           await Promise.allSettled([
             apiFetch("/clubs"),
             apiFetch("/interest-categories"),
             apiFetch("/clubs/recommended?limit=200"),
+            userId ? fetchJoinedClubs(userId) : Promise.resolve([]),
           ]);
 
         if (ignore) return;
@@ -87,6 +100,17 @@ export default function Clubs() {
             ? categoriesResult.value
             : []
         );
+        setJoinedClubIds(
+          joinedClubsResult.status === "fulfilled"
+            ? createJoinedClubIdSet(joinedClubsResult.value)
+            : new Set()
+        );
+        if (joinedClubsResult.status === "rejected") {
+          setMembershipErrorMessage(
+            joinedClubsResult.reason?.message ||
+              "Could not load your club memberships."
+          );
+        }
 
         let interestCount = null;
         if (userId) {
@@ -105,7 +129,10 @@ export default function Clubs() {
           setErrorMessage(error.message || "Could not load clubs.");
         }
       } finally {
-        if (!ignore) setIsLoading(false);
+        if (!ignore) {
+          setIsLoading(false);
+          setIsLoadingMemberships(false);
+        }
       }
     };
 
@@ -114,6 +141,31 @@ export default function Clubs() {
       ignore = true;
     };
   }, [userId]);
+
+  useEffect(
+    () =>
+      subscribeToClubMembershipChanges(({ type, clubId, club }) => {
+        const normalizedClubId = String(clubId);
+
+        setJoinedClubIds((prev) => {
+          const next = new Set(prev);
+          if (type === "joined") next.add(normalizedClubId);
+          if (type === "left") next.delete(normalizedClubId);
+          return next;
+        });
+
+        if (club?.id && type === "joined") {
+          setClubs((prev) =>
+            prev.map((item) =>
+              String(item.id) === normalizedClubId ? { ...item, ...club } : item
+            )
+          );
+        }
+
+        setMembershipErrorMessage("");
+      }),
+    []
+  );
 
   const filteredClubs = useMemo(() => {
     if (!selectedCategoryId) return clubs;
@@ -250,6 +302,44 @@ export default function Clubs() {
     }, 250);
   };
 
+  const handleToggleMembership = async (club) => {
+    if (!userId) return;
+
+    const normalizedClubId = String(club.id);
+    const isJoined = joinedClubIds.has(normalizedClubId);
+
+    setPendingMembershipClubId(club.id);
+    setMembershipErrorMessage("");
+
+    try {
+      if (isJoined) {
+        await apiFetch(`/clubs/${club.id}/join`, { method: "DELETE" });
+        setJoinedClubIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedClubId);
+          return next;
+        });
+        emitClubMembershipChanged({ type: "left", clubId: club.id });
+      } else {
+        const joinedClub = await apiFetch(`/clubs/${club.id}/join`, {
+          method: "POST",
+        });
+        setJoinedClubIds((prev) => new Set(prev).add(normalizedClubId));
+        emitClubMembershipChanged({
+          type: "joined",
+          clubId: club.id,
+          club: joinedClub,
+        });
+      }
+    } catch (error) {
+      setMembershipErrorMessage(
+        error.message || "Could not update your club membership."
+      );
+    } finally {
+      setPendingMembershipClubId(null);
+    }
+  };
+
   const hasActiveFilters = Boolean(selectedCategoryId);
 
   const handleClearFilters = () => {
@@ -262,7 +352,7 @@ export default function Clubs() {
         <div style={styles.titleBlock}>
           <h1 style={styles.title}>Discover Clubs</h1>
           <p style={styles.subtitle}>
-            Swipe up to explore · {likedIds.size} liked
+            Swipe up to explore · {joinedClubIds.size} joined · {likedIds.size} liked
           </p>
         </div>
 
@@ -345,6 +435,12 @@ export default function Clubs() {
         </div>
       ) : null}
 
+      {membershipErrorMessage ? (
+        <div style={styles.alertWrap}>
+          <Alert variant="error">{membershipErrorMessage}</Alert>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div style={styles.stateWrap}>
           <LoadingState
@@ -375,6 +471,7 @@ export default function Clubs() {
             const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
             const isLiked = likedIds.has(club.id);
             const isSkipped = skippedIds.has(club.id);
+            const isJoined = joinedClubIds.has(String(club.id));
             const isActive = index === activeIndex;
             const isToastForThis = feedbackToast?.clubId === club.id;
             const initial = (club.name || "?").trim().charAt(0).toUpperCase();
@@ -420,6 +517,9 @@ export default function Clubs() {
                         {isLiked ? (
                           <span style={styles.likedBadge}>♥ Liked</span>
                         ) : null}
+                        {isJoined ? (
+                          <span style={styles.joinedBadge}>Joined</span>
+                        ) : null}
                       </div>
                     </div>
 
@@ -444,6 +544,28 @@ export default function Clubs() {
                       </div>
 
                       <div style={styles.linkRow}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMembership(club)}
+                          disabled={
+                            pendingMembershipClubId === club.id ||
+                            isLoadingMemberships
+                          }
+                          style={{
+                            ...styles.membershipButton,
+                            ...(isJoined
+                              ? styles.membershipButtonJoined
+                              : styles.membershipButtonPrimary),
+                          }}
+                        >
+                          {pendingMembershipClubId === club.id
+                            ? "Saving..."
+                            : isLoadingMemberships
+                              ? "Checking..."
+                              : isJoined
+                                ? "Leave club"
+                                : "Join club"}
+                        </button>
                         <Link to={`/clubs/${club.id}`} style={styles.detailsButton}>
                           View details →
                         </Link>
@@ -764,6 +886,16 @@ const styles = {
     fontSize: "11px",
     fontWeight: 800,
   },
+  joinedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(16, 185, 129, 0.92)",
+    color: "#042f2e",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
   scoreBadge: {
     display: "inline-flex",
     alignItems: "center",
@@ -836,6 +968,27 @@ const styles = {
     flexWrap: "wrap",
     gap: "8px",
     alignItems: "center",
+  },
+  membershipButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "10px 16px",
+    borderRadius: "999px",
+    border: "1px solid transparent",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 8px 20px rgba(0, 0, 0, 0.2)",
+  },
+  membershipButtonPrimary: {
+    background: "#111827",
+    color: "white",
+  },
+  membershipButtonJoined: {
+    background: "rgba(255, 255, 255, 0.95)",
+    color: "#111827",
+    borderColor: "rgba(255, 255, 255, 0.75)",
   },
   detailsButton: {
     display: "inline-flex",

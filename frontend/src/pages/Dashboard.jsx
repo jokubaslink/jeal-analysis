@@ -3,6 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { apiFetch } from "../api/client.js";
 import RegisteredEventsCalendar from "../components/RegisteredEventsCalendar.jsx";
+import {
+  emitClubMembershipChanged,
+  fetchJoinedClubs,
+  subscribeToClubMembershipChanges,
+} from "../lib/clubMemberships.js";
 import { isEventPast } from "../lib/eventTime.js";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
 import { Alert, Button, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
@@ -32,6 +37,7 @@ export default function Dashboard() {
   const [registeredEventsErrorMessage, setRegisteredEventsErrorMessage] = useState("");
   const [joinedClubs, setJoinedClubs] = useState([]);
   const [joinedClubsErrorMessage, setJoinedClubsErrorMessage] = useState("");
+  const [pendingLeaveClubId, setPendingLeaveClubId] = useState(null);
 
   useEffect(() => {
     let ignore = false;
@@ -99,8 +105,7 @@ export default function Dashboard() {
           let joinedClubsPayload = [];
           let joinedClubsErr = "";
           try {
-            const jc = await apiFetch(`/users/${userId}/joined-clubs`);
-            joinedClubsPayload = Array.isArray(jc) ? jc : [];
+            joinedClubsPayload = await fetchJoinedClubs(userId);
           } catch (error) {
             joinedClubsPayload = [];
             joinedClubsErr =
@@ -151,6 +156,33 @@ export default function Dashboard() {
       ignore = true;
     };
   }, [userId]);
+
+  useEffect(
+    () =>
+      subscribeToClubMembershipChanges(({ type, clubId, club }) => {
+        const normalizedClubId = String(clubId);
+        setJoinedClubs((prev) => {
+          if (type === "left") {
+            return prev.filter((item) => String(item.id) !== normalizedClubId);
+          }
+
+          if (type === "joined" && club) {
+            const withoutCurrent = prev.filter(
+              (item) => String(item.id) !== normalizedClubId
+            );
+            return [...withoutCurrent, club].sort((a, b) =>
+              (a.name || "").localeCompare(b.name || "", undefined, {
+                sensitivity: "base",
+              })
+            );
+          }
+
+          return prev;
+        });
+        setJoinedClubsErrorMessage("");
+      }),
+    []
+  );
 
   const groupedUserInterests = useMemo(() => {
     const groups = new Map();
@@ -207,6 +239,36 @@ export default function Dashboard() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const formatJoinedDate = (value) => {
+    if (!value) return "Joined recently";
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Joined recently";
+    }
+
+    return `Joined ${parsed.toLocaleDateString([], {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })}`;
+  };
+
+  const handleLeaveClub = async (clubId) => {
+    setPendingLeaveClubId(clubId);
+    setJoinedClubsErrorMessage("");
+
+    try {
+      await apiFetch(`/clubs/${clubId}/join`, { method: "DELETE" });
+      setJoinedClubs((prev) => prev.filter((club) => club.id !== clubId));
+      emitClubMembershipChanged({ type: "left", clubId });
+    } catch (error) {
+      setJoinedClubsErrorMessage(error.message || "Could not update your clubs.");
+    } finally {
+      setPendingLeaveClubId(null);
+    }
   };
 
   const handleProfileInputChange = (event) => {
@@ -383,12 +445,27 @@ export default function Dashboard() {
                   <div style={joinedClubsGrid}>
                     {joinedClubs.map((club) => (
                       <article key={club.id} style={joinedClubCard}>
-                        <Link to={`/clubs/${club.id}`} style={joinedClubCardTitle}>
-                          {club.name}
-                        </Link>
-                        <p style={joinedClubCategoryLine}>
-                          {club.category_name || "Uncategorized"}
-                        </p>
+                        <div style={joinedClubCardHeader}>
+                          <div>
+                            <Link to={`/clubs/${club.id}`} style={joinedClubCardTitle}>
+                              {club.name}
+                            </Link>
+                            <p style={joinedClubCategoryLine}>
+                              {club.category_name || "Uncategorized"}
+                            </p>
+                            <p style={joinedClubDateLine}>
+                              {formatJoinedDate(club.joined_at)}
+                            </p>
+                          </div>
+                          <Button
+                            variant="secondary"
+                            disabled={pendingLeaveClubId === club.id}
+                            onClick={() => handleLeaveClub(club.id)}
+                            className="min-w-[120px]"
+                          >
+                            {pendingLeaveClubId === club.id ? "Leaving..." : "Leave club"}
+                          </Button>
+                        </div>
                       </article>
                     ))}
                   </div>
@@ -1212,13 +1289,18 @@ const joinedClubsGrid = {
 };
 
 const joinedClubCard = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
   padding: "14px 16px",
   borderRadius: "14px",
   border: "1px solid #e5e7eb",
   background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
+};
+
+const joinedClubCardHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  flexWrap: "wrap",
 };
 
 const joinedClubCardTitle = {
@@ -1233,5 +1315,12 @@ const joinedClubCategoryLine = {
   margin: 0,
   fontSize: "13px",
   fontWeight: 600,
+  color: "#6b7280",
+};
+
+const joinedClubDateLine = {
+  margin: "8px 0 0 0",
+  fontSize: "12px",
+  fontWeight: 500,
   color: "#6b7280",
 };
