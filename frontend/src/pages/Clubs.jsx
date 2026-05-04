@@ -154,13 +154,19 @@ export default function Clubs() {
           return next;
         });
 
-        if (club?.id && type === "joined") {
-          setClubs((prev) =>
-            prev.map((item) =>
-              String(item.id) === normalizedClubId ? { ...item, ...club } : item
-            )
-          );
-        }
+        setClubs((prev) =>
+          prev.map((item) => {
+            if (String(item.id) !== normalizedClubId) return item;
+            if (club?.id) return { ...item, ...club };
+            if (type === "left") {
+              return {
+                ...item,
+                member_count: Math.max(0, (item.member_count || 0) - 1),
+              };
+            }
+            return item;
+          })
+        );
 
         setMembershipErrorMessage("");
       }),
@@ -319,12 +325,26 @@ export default function Clubs() {
           next.delete(normalizedClubId);
           return next;
         });
-        emitClubMembershipChanged({ type: "left", clubId: club.id });
+        const updatedClub = {
+          ...club,
+          member_count: Math.max(0, (club.member_count || 0) - 1),
+        };
+        setClubs((prev) =>
+          prev.map((item) =>
+            String(item.id) === normalizedClubId ? { ...item, ...updatedClub } : item
+          )
+        );
+        emitClubMembershipChanged({ type: "left", clubId: club.id, club: updatedClub });
       } else {
         const joinedClub = await apiFetch(`/clubs/${club.id}/join`, {
           method: "POST",
         });
         setJoinedClubIds((prev) => new Set(prev).add(normalizedClubId));
+        setClubs((prev) =>
+          prev.map((item) =>
+            String(item.id) === normalizedClubId ? { ...item, ...joinedClub } : item
+          )
+        );
         emitClubMembershipChanged({
           type: "joined",
           clubId: club.id,
@@ -541,6 +561,11 @@ export default function Clubs() {
                         {club.location ? (
                           <span style={styles.metaPill}>🏛 {club.location}</span>
                         ) : null}
+                        <span style={styles.metaPill}>
+                          {club.member_count === 1
+                            ? "1 member"
+                            : `${club.member_count || 0} members`}
+                        </span>
                       </div>
 
                       <div style={styles.linkRow}>

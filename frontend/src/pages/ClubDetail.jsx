@@ -98,11 +98,26 @@ export default function ClubDetail() {
   useEffect(() => {
     if (!clubId) return undefined;
 
-    return subscribeToClubMembershipChanges(({ type, clubId: changedClubId }) => {
-      if (String(changedClubId) !== String(clubId)) return;
-      setIsMember(type === "joined");
-      setMembershipErrorMessage("");
-    });
+    return subscribeToClubMembershipChanges(
+      ({ type, clubId: changedClubId, club: changedClub }) => {
+        if (String(changedClubId) !== String(clubId)) return;
+        setIsMember(type === "joined");
+        setClub((prev) => {
+          if (!prev) return prev;
+          if (changedClub?.id) {
+            return { ...prev, ...changedClub };
+          }
+          if (type === "left") {
+            return {
+              ...prev,
+              member_count: Math.max(0, (prev.member_count || 0) - 1),
+            };
+          }
+          return prev;
+        });
+        setMembershipErrorMessage("");
+      }
+    );
   }, [clubId]);
 
   const handleToggleMembership = async () => {
@@ -119,10 +134,23 @@ export default function ClubDetail() {
       if (isMember) {
         await apiFetch(`/clubs/${clubId}/join`, { method: "DELETE" });
         setIsMember(false);
-        emitClubMembershipChanged({ type: "left", clubId });
+        setClub((prev) =>
+          prev
+            ? { ...prev, member_count: Math.max(0, (prev.member_count || 0) - 1) }
+            : prev
+        );
+        emitClubMembershipChanged({
+          type: "left",
+          clubId,
+          club: {
+            ...club,
+            member_count: Math.max(0, (club?.member_count || 0) - 1),
+          },
+        });
       } else {
         const joinedClub = await apiFetch(`/clubs/${clubId}/join`, { method: "POST" });
         setIsMember(true);
+        setClub((prev) => (prev ? { ...prev, ...joinedClub } : prev));
         emitClubMembershipChanged({ type: "joined", clubId, club: joinedClub });
       }
     } catch (error) {
@@ -189,6 +217,9 @@ export default function ClubDetail() {
         <div style={metaRow}>
           {club.city ? <span style={metaPill}>📍 {club.city}</span> : null}
           {club.location ? <span style={metaPill}>🏛 {club.location}</span> : null}
+          <span style={metaPill}>
+            {club.member_count === 1 ? "1 member" : `${club.member_count || 0} members`}
+          </span>
           {club.is_active === false ? (
             <span style={inactivePill}>Inactive</span>
           ) : null}

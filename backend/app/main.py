@@ -215,6 +215,7 @@ class ClubOut(BaseModel):
     location: str | None = None
     website_url: str | None = None
     is_active: bool
+    member_count: int
 
 
 class JoinedClubOut(ClubOut):
@@ -235,6 +236,7 @@ class RecommendedClubOut(BaseModel):
     location: str | None = None
     website_url: str | None = None
     is_active: bool
+    member_count: int
     score: int
 
 
@@ -398,6 +400,7 @@ class EventOut(BaseModel):
     is_online: bool
     registration_url: str | None = None
     image_url: str | None = None
+    attendee_count: int
 
 
 class RegisteredEventOut(EventOut):
@@ -425,6 +428,7 @@ class RecommendedEventOut(BaseModel):
     is_online: bool
     registration_url: str | None = None
     image_url: str | None = None
+    attendee_count: int
     score: int
 
 
@@ -525,6 +529,16 @@ def _user_to_me_out(user: models.User) -> UserMeOut:
     )
 
 
+def _club_member_count(club: models.Club) -> int:
+    memberships = getattr(club, "memberships", None)
+    return len(memberships) if memberships is not None else 0
+
+
+def _event_attendee_count(event: models.Event) -> int:
+    registrations = getattr(event, "registrations", None)
+    return len(registrations) if registrations is not None else 0
+
+
 def _serialize_club(club: models.Club) -> ClubOut:
     return ClubOut(
         id=str(club.id),
@@ -536,6 +550,7 @@ def _serialize_club(club: models.Club) -> ClubOut:
         location=club.location,
         website_url=club.website_url,
         is_active=club.is_active,
+        member_count=_club_member_count(club),
     )
 
 
@@ -560,7 +575,15 @@ def _get_club_or_404(
             detail="Invalid club ID format.",
         )
 
-    club = db.query(models.Club).filter(models.Club.id == club_uuid).first()
+    club = (
+        db.query(models.Club)
+        .options(
+            joinedload(models.Club.category),
+            joinedload(models.Club.memberships),
+        )
+        .filter(models.Club.id == club_uuid)
+        .first()
+    )
     if not club:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -803,7 +826,10 @@ def _build_recommended_clubs(
 
     clubs = (
         db.query(models.Club)
-        .options(joinedload(models.Club.category))
+        .options(
+            joinedload(models.Club.category),
+            joinedload(models.Club.memberships),
+        )
         .filter(models.Club.is_active.is_(True))
         .all()
     )
@@ -829,6 +855,7 @@ def _build_recommended_clubs(
             location=c.location,
             website_url=c.website_url,
             is_active=c.is_active,
+            member_count=_club_member_count(c),
             score=score,
         )
         for score, c in top
@@ -849,6 +876,7 @@ def _build_recommended_events(
         .options(
             joinedload(models.Event.category),
             joinedload(models.Event.club),
+            joinedload(models.Event.registrations),
         )
         .filter(models.Event.is_active.is_(True))
         .filter(models.Event.start_time > func.now())
@@ -883,6 +911,7 @@ def _build_recommended_events(
             is_online=e.is_online,
             registration_url=e.registration_url,
             image_url=e.image_url,
+            attendee_count=_event_attendee_count(e),
             score=score,
         )
         for score, e in top
@@ -898,6 +927,11 @@ def _build_events_query(
 ):
     query = (
         db.query(models.Event)
+        .options(
+            joinedload(models.Event.category),
+            joinedload(models.Event.club),
+            joinedload(models.Event.registrations),
+        )
         .join(
             models.InterestCategory,
             models.Event.category_id == models.InterestCategory.id,
@@ -953,6 +987,7 @@ def _serialize_event(event: models.Event) -> EventOut:
         is_online=event.is_online,
         registration_url=event.registration_url,
         image_url=event.image_url,
+        attendee_count=_event_attendee_count(event),
     )
 
 
@@ -976,6 +1011,7 @@ def _serialize_registered_event(
         is_online=event.is_online,
         registration_url=event.registration_url,
         image_url=event.image_url,
+        attendee_count=_event_attendee_count(event),
         registered_at=registration.created_at.isoformat(),
     )
 
@@ -994,7 +1030,15 @@ def _get_event_or_404(
             detail="Invalid event ID format.",
         )
 
-    query = db.query(models.Event).filter(models.Event.id == event_uuid)
+    query = (
+        db.query(models.Event)
+        .options(
+            joinedload(models.Event.category),
+            joinedload(models.Event.club),
+            joinedload(models.Event.registrations),
+        )
+        .filter(models.Event.id == event_uuid)
+    )
     if active_only:
         query = query.filter(models.Event.is_active.is_(True))
 
@@ -1262,11 +1306,19 @@ def create_club(
 
 @app.get("/clubs", response_model=list[ClubOut])
 def list_clubs(category_id: str | None = None, city: str | None = None, db: Session = Depends(get_db)):
-    query = db.query(models.Club).join(
-        models.InterestCategory,
-        models.Club.category_id == models.InterestCategory.id,
-        isouter=True,
-    ).filter(models.Club.is_active.is_(True))
+    query = (
+        db.query(models.Club)
+        .options(
+            joinedload(models.Club.category),
+            joinedload(models.Club.memberships),
+        )
+        .join(
+            models.InterestCategory,
+            models.Club.category_id == models.InterestCategory.id,
+            isouter=True,
+        )
+        .filter(models.Club.is_active.is_(True))
+    )
 
     if category_id is not None:
         try:
@@ -1296,6 +1348,9 @@ def list_clubs_admin(
         models.InterestCategory,
         models.Club.category_id == models.InterestCategory.id,
         isouter=True,
+    ).options(
+        joinedload(models.Club.category),
+        joinedload(models.Club.memberships),
     )
 
     if category_id is not None:
@@ -1600,6 +1655,7 @@ def list_registered_events(
         .options(
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.category),
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.club),
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.registrations),
         )
         .join(models.Event, models.UserEventRegistration.event_id == models.Event.id)
         .filter(models.UserEventRegistration.user_id == user_uuid)
@@ -1648,6 +1704,7 @@ def register_for_event(
         .options(
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.category),
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.club),
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.registrations),
         )
         .filter(models.UserEventRegistration.user_id == current_user.id)
         .filter(models.UserEventRegistration.event_id == event.id)
@@ -1694,7 +1751,10 @@ def list_joined_clubs(
 
     rows = (
         db.query(models.UserClubMembership)
-        .options(joinedload(models.UserClubMembership.club).joinedload(models.Club.category))
+        .options(
+            joinedload(models.UserClubMembership.club).joinedload(models.Club.category),
+            joinedload(models.UserClubMembership.club).joinedload(models.Club.memberships),
+        )
         .join(models.Club, models.UserClubMembership.club_id == models.Club.id)
         .filter(models.UserClubMembership.user_id == user_uuid)
         .order_by(models.Club.name.asc())
@@ -1729,7 +1789,10 @@ def join_club(
 
     membership = (
         db.query(models.UserClubMembership)
-        .options(joinedload(models.UserClubMembership.club).joinedload(models.Club.category))
+        .options(
+            joinedload(models.UserClubMembership.club).joinedload(models.Club.category),
+            joinedload(models.UserClubMembership.club).joinedload(models.Club.memberships),
+        )
         .filter(models.UserClubMembership.user_id == current_user.id)
         .filter(models.UserClubMembership.club_id == club.id)
         .first()

@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import {
+  emitEventRegistrationChanged,
+  fetchRegisteredEvents,
+  subscribeToEventRegistrationChanges,
+} from "../lib/eventRegistrations.js";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
@@ -70,7 +75,7 @@ export default function EventDetail() {
       setIsLoadingRegistration(true);
       setRegistrationErrorMessage("");
       try {
-        const registeredEvents = await apiFetch(`/users/${userId}/registered-events`);
+        const registeredEvents = await fetchRegisteredEvents(userId);
         if (!ignore) {
           setIsRegistered(
             Array.isArray(registeredEvents) &&
@@ -94,6 +99,31 @@ export default function EventDetail() {
     };
   }, [eventId, userId]);
 
+  useEffect(() => {
+    if (!eventId) return undefined;
+
+    return subscribeToEventRegistrationChanges(
+      ({ type, eventId: changedEventId, event: changedEvent }) => {
+        if (String(changedEventId) !== String(eventId)) return;
+        setIsRegistered(type === "registered");
+        setEvent((prev) => {
+          if (!prev) return prev;
+          if (changedEvent?.id) {
+            return { ...prev, ...changedEvent };
+          }
+          if (type === "unregistered") {
+            return {
+              ...prev,
+              attendee_count: Math.max(0, (prev.attendee_count || 0) - 1),
+            };
+          }
+          return prev;
+        });
+        setRegistrationErrorMessage("");
+      }
+    );
+  }, [eventId]);
+
   const handleToggleRegistration = async () => {
     if (!eventId) return;
     if (!userId) {
@@ -108,9 +138,28 @@ export default function EventDetail() {
       if (isRegistered) {
         await apiFetch(`/events/${eventId}/register`, { method: "DELETE" });
         setIsRegistered(false);
+        setEvent((prev) =>
+          prev
+            ? { ...prev, attendee_count: Math.max(0, (prev.attendee_count || 0) - 1) }
+            : prev
+        );
+        emitEventRegistrationChanged({
+          type: "unregistered",
+          eventId,
+          event: {
+            ...event,
+            attendee_count: Math.max(0, (event?.attendee_count || 0) - 1),
+          },
+        });
       } else {
-        await apiFetch(`/events/${eventId}/register`, { method: "POST" });
+        const registeredEvent = await apiFetch(`/events/${eventId}/register`, { method: "POST" });
         setIsRegistered(true);
+        setEvent((prev) => (prev ? { ...prev, ...registeredEvent } : prev));
+        emitEventRegistrationChanged({
+          type: "registered",
+          eventId,
+          event: registeredEvent,
+        });
       }
     } catch (error) {
       setRegistrationErrorMessage(
@@ -196,6 +245,11 @@ export default function EventDetail() {
           ) : null}
           {event.city ? <span style={metaPill}>{event.city}</span> : null}
           {event.location ? <span style={metaPill}>{event.location}</span> : null}
+          <span style={metaPill}>
+            {event.attendee_count === 1
+              ? "1 attendee"
+              : `${event.attendee_count || 0} attendees`}
+          </span>
         </div>
 
         <div style={actionRow}>
@@ -219,8 +273,8 @@ export default function EventDetail() {
               : isSavingRegistration
                 ? "Saving..."
                 : isRegistered
-                  ? "Remove from my calendar"
-                  : "I'm registered"}
+                  ? "Leave event"
+                  : "Attend event"}
           </Button>
         </div>
         {past && !isRegistered ? (

@@ -456,6 +456,11 @@ export default function Dashboard() {
                             <p style={joinedClubDateLine}>
                               {formatJoinedDate(club.joined_at)}
                             </p>
+                            <p style={joinedClubDateLine}>
+                              {club.member_count === 1
+                                ? "1 member"
+                                : `${club.member_count || 0} members`}
+                            </p>
                           </div>
                           <Button
                             variant="secondary"

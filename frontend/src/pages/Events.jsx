@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import {
+  createRegisteredEventIdSet,
+  emitEventRegistrationChanged,
+  fetchRegisteredEvents,
+  subscribeToEventRegistrationChanges,
+} from "../lib/eventRegistrations.js";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
@@ -92,8 +98,11 @@ export default function Events() {
   const [customFrom, setCustomFrom] = useState(toDateInputValue(new Date()));
   const [customTo, setCustomTo] = useState(toDateInputValue(addDays(new Date(), 30)));
   const [activeIndex, setActiveIndex] = useState(0);
-  const [interestedIds, setInterestedIds] = useState(() => new Set());
+  const [registeredEventIds, setRegisteredEventIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(true);
+  const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
+  const [pendingRegistrationEventId, setPendingRegistrationEventId] = useState(null);
   const [feedbackToast, setFeedbackToast] = useState(null);
   const [showPastEvents, setShowPastEvents] = useState(false);
 
@@ -105,15 +114,18 @@ export default function Events() {
 
     const loadData = async () => {
       setIsLoading(true);
+      setIsLoadingRegistrations(true);
       setErrorMessage("");
+      setRegistrationErrorMessage("");
       setSavedInterestCount(null);
 
       try {
-        const [recommendedResult, allResult, categoriesResult] =
+        const [recommendedResult, allResult, categoriesResult, registeredEventsResult] =
           await Promise.allSettled([
             apiFetch("/events/recommended?limit=50"),
             apiFetch("/events"),
             apiFetch("/interest-categories"),
+            userId ? fetchRegisteredEvents(userId) : Promise.resolve([]),
           ]);
 
         if (ignore) return;
@@ -151,6 +163,17 @@ export default function Events() {
             ? categoriesResult.value
             : []
         );
+        setRegisteredEventIds(
+          registeredEventsResult.status === "fulfilled"
+            ? createRegisteredEventIdSet(registeredEventsResult.value)
+            : new Set()
+        );
+        if (registeredEventsResult.status === "rejected") {
+          setRegistrationErrorMessage(
+            registeredEventsResult.reason?.message ||
+              "Could not load your event registrations."
+          );
+        }
 
         let interestCount = null;
         if (userId) {
@@ -169,7 +192,10 @@ export default function Events() {
           setErrorMessage(error.message || "Could not load events.");
         }
       } finally {
-        if (!ignore) setIsLoading(false);
+        if (!ignore) {
+          setIsLoading(false);
+          setIsLoadingRegistrations(false);
+        }
       }
     };
 
@@ -178,6 +204,37 @@ export default function Events() {
       ignore = true;
     };
   }, [userId]);
+
+  useEffect(
+    () =>
+      subscribeToEventRegistrationChanges(({ type, eventId, event }) => {
+        const normalizedEventId = String(eventId);
+
+        setRegisteredEventIds((prev) => {
+          const next = new Set(prev);
+          if (type === "registered") next.add(normalizedEventId);
+          if (type === "unregistered") next.delete(normalizedEventId);
+          return next;
+        });
+
+        setEvents((prev) =>
+          prev.map((item) => {
+            if (String(item.id) !== normalizedEventId) return item;
+            if (event?.id) return { ...item, ...event };
+            if (type === "unregistered") {
+              return {
+                ...item,
+                attendee_count: Math.max(0, (item.attendee_count || 0) - 1),
+              };
+            }
+            return item;
+          })
+        );
+
+        setRegistrationErrorMessage("");
+      }),
+    []
+  );
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -300,35 +357,73 @@ export default function Events() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [activeIndex, filteredEvents.length]);
 
-  const handleInterested = (event) => {
-    const wasInterested = interestedIds.has(event.id);
+  const handleToggleRegistration = async (event) => {
+    if (!userId) return;
 
-    setInterestedIds((prev) => {
-      const next = new Set(prev);
-      if (wasInterested) {
-        next.delete(event.id);
-      } else {
-        next.add(event.id);
+    const normalizedEventId = String(event.id);
+    const isRegistered = registeredEventIds.has(normalizedEventId);
+
+    setPendingRegistrationEventId(event.id);
+    setRegistrationErrorMessage("");
+
+    try {
+      if (isRegistered) {
+        await apiFetch(`/events/${event.id}/register`, { method: "DELETE" });
+        const updatedEvent = {
+          ...event,
+          attendee_count: Math.max(0, (event.attendee_count || 0) - 1),
+        };
+        setRegisteredEventIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedEventId);
+          return next;
+        });
+        setEvents((prev) =>
+          prev.map((item) =>
+            String(item.id) === normalizedEventId ? { ...item, ...updatedEvent } : item
+          )
+        );
+        emitEventRegistrationChanged({
+          type: "unregistered",
+          eventId: event.id,
+          event: updatedEvent,
+        });
+        setFeedbackToast({ kind: "interested-undo", eventId: event.id });
+        return;
       }
-      return next;
-    });
 
-    if (wasInterested) {
-      setFeedbackToast({ kind: "interested-undo", eventId: event.id });
-      return;
+      const registeredEvent = await apiFetch(`/events/${event.id}/register`, {
+        method: "POST",
+      });
+      setRegisteredEventIds((prev) => new Set(prev).add(normalizedEventId));
+      setEvents((prev) =>
+        prev.map((item) =>
+          String(item.id) === normalizedEventId ? { ...item, ...registeredEvent } : item
+        )
+      );
+      setSkippedIds((prev) => {
+        if (!prev.has(event.id)) return prev;
+        const next = new Set(prev);
+        next.delete(event.id);
+        return next;
+      });
+      emitEventRegistrationChanged({
+        type: "registered",
+        eventId: event.id,
+        event: registeredEvent,
+      });
+      setFeedbackToast({ kind: "interested", eventId: event.id });
+      setTimeout(() => {
+        const nextIndex = filteredEvents.findIndex((e) => e.id === event.id) + 1;
+        if (nextIndex < filteredEvents.length) scrollToCard(nextIndex);
+      }, 250);
+    } catch (error) {
+      setRegistrationErrorMessage(
+        error.message || "Could not update your event registration."
+      );
+    } finally {
+      setPendingRegistrationEventId(null);
     }
-
-    setSkippedIds((prev) => {
-      if (!prev.has(event.id)) return prev;
-      const next = new Set(prev);
-      next.delete(event.id);
-      return next;
-    });
-    setFeedbackToast({ kind: "interested", eventId: event.id });
-    setTimeout(() => {
-      const nextIndex = filteredEvents.findIndex((e) => e.id === event.id) + 1;
-      if (nextIndex < filteredEvents.length) scrollToCard(nextIndex);
-    }, 250);
   };
 
   const handleSkip = (event) => {
@@ -349,12 +444,6 @@ export default function Events() {
       return;
     }
 
-    setInterestedIds((prev) => {
-      if (!prev.has(event.id)) return prev;
-      const next = new Set(prev);
-      next.delete(event.id);
-      return next;
-    });
     setFeedbackToast({ kind: "skip", eventId: event.id });
     setTimeout(() => {
       const nextIndex = filteredEvents.findIndex((e) => e.id === event.id) + 1;
@@ -377,7 +466,7 @@ export default function Events() {
         <div style={styles.titleBlock}>
           <h1 style={styles.title}>Discover Events</h1>
           <p style={styles.subtitle}>
-            Swipe up to explore · {interestedIds.size} interested
+            Swipe up to explore · {registeredEventIds.size} attending
           </p>
         </div>
 
@@ -513,6 +602,12 @@ export default function Events() {
         </div>
       ) : null}
 
+      {registrationErrorMessage ? (
+        <div style={styles.alertWrap}>
+          <Alert variant="error">{registrationErrorMessage}</Alert>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div style={styles.stateWrap}>
           <LoadingState
@@ -545,7 +640,7 @@ export default function Events() {
         <div ref={scrollerRef} style={styles.scroller}>
           {filteredEvents.map((event, index) => {
             const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
-            const isInterested = interestedIds.has(event.id);
+            const isRegistered = registeredEventIds.has(String(event.id));
             const isSkipped = skippedIds.has(event.id);
             const isActive = index === activeIndex;
             const isToastForThis = feedbackToast?.eventId === event.id;
@@ -609,7 +704,7 @@ export default function Events() {
                         {event.is_online ? (
                           <span style={styles.onlineBadge}>● Online</span>
                         ) : null}
-                        {isInterested ? (
+                        {isRegistered ? (
                           <span style={styles.likedBadge}>♥ Going</span>
                         ) : null}
                       </div>
@@ -634,9 +729,37 @@ export default function Events() {
                         {event.location ? (
                           <span style={styles.metaPill}>🏛 {event.location}</span>
                         ) : null}
+                        <span style={styles.metaPill}>
+                          {event.attendee_count === 1
+                            ? "1 attendee"
+                            : `${event.attendee_count || 0} attendees`}
+                        </span>
                       </div>
 
                       <div style={styles.linkRow}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRegistration(event)}
+                          disabled={
+                            pendingRegistrationEventId === event.id ||
+                            isLoadingRegistrations ||
+                            (past && !isRegistered)
+                          }
+                          style={{
+                            ...styles.membershipButton,
+                            ...(isRegistered
+                              ? styles.membershipButtonJoined
+                              : styles.membershipButtonPrimary),
+                          }}
+                        >
+                          {pendingRegistrationEventId === event.id
+                            ? "Saving..."
+                            : isLoadingRegistrations
+                              ? "Checking..."
+                              : isRegistered
+                                ? "Leave event"
+                                : "Attend event"}
+                        </button>
                         <Link to={`/events/${event.id}`} style={styles.detailsButton}>
                           View details →
                         </Link>
@@ -682,18 +805,23 @@ export default function Events() {
 
                     <button
                       type="button"
-                      onClick={() => handleInterested(event)}
+                      onClick={() => handleToggleRegistration(event)}
+                      disabled={
+                        pendingRegistrationEventId === event.id ||
+                        isLoadingRegistrations ||
+                        (past && !isRegistered)
+                      }
                       style={{
                         ...styles.actionButton,
-                        ...(isInterested ? styles.actionButtonLikedActive : null),
+                        ...(isRegistered ? styles.actionButtonLikedActive : null),
                       }}
-                      aria-label={isInterested ? "Remove interested" : "Mark interested"}
-                      aria-pressed={isInterested}
-                      title={isInterested ? "Undo going" : "Interested"}
+                      aria-label={isRegistered ? "Leave this event" : "Attend this event"}
+                      aria-pressed={isRegistered}
+                      title={isRegistered ? "Leave event" : "Attend event"}
                     >
                       <span style={styles.actionGlyph}>♥</span>
                       <span style={styles.actionLabel}>
-                        {isInterested ? "Undo" : "Going"}
+                        {isRegistered ? "Undo" : "Going"}
                       </span>
                     </button>
 
@@ -1086,6 +1214,27 @@ const styles = {
     flexWrap: "wrap",
     gap: "8px",
     alignItems: "center",
+  },
+  membershipButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "10px 16px",
+    borderRadius: "999px",
+    border: "1px solid transparent",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 8px 20px rgba(0, 0, 0, 0.2)",
+  },
+  membershipButtonPrimary: {
+    background: "#111827",
+    color: "white",
+  },
+  membershipButtonJoined: {
+    background: "rgba(255, 255, 255, 0.95)",
+    color: "#111827",
+    borderColor: "rgba(255, 255, 255, 0.75)",
   },
   detailsButton: {
     display: "inline-flex",
