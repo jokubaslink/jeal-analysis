@@ -1,7 +1,7 @@
 import hashlib
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -133,6 +133,9 @@ class ClubCreate(BaseModel):
     location: str | None = Field(None, max_length=255)
     website_url: str | None = Field(None, max_length=500)
     is_active: bool | None = None
+    meeting_weekday: int | None = Field(None, ge=0, le=6)
+    meeting_start_time: str | None = None
+    meeting_end_time: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -163,6 +166,33 @@ class ClubCreate(BaseModel):
             raise ValueError("website_url must be an http(s) URL.")
         return s
 
+    @field_validator("meeting_start_time", "meeting_end_time")
+    @classmethod
+    def optional_time_string(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        try:
+            parsed = time.fromisoformat(s)
+        except ValueError:
+            raise ValueError("Time must use HH:MM or HH:MM:SS format.")
+        return parsed.strftime("%H:%M")
+
+    @model_validator(mode="after")
+    def validate_meeting_schedule(self) -> "ClubCreate":
+        if self.meeting_weekday is None:
+            if self.meeting_start_time is not None or self.meeting_end_time is not None:
+                raise ValueError("meeting_weekday is required when meeting times are set.")
+            return self
+
+        if self.meeting_start_time is None:
+            raise ValueError("meeting_start_time is required when meeting_weekday is set.")
+        if self.meeting_end_time is not None and self.meeting_end_time <= self.meeting_start_time:
+            raise ValueError("meeting_end_time must be after meeting_start_time.")
+        return self
+
 
 class ClubUpdate(BaseModel):
     name: str | None = None
@@ -172,6 +202,9 @@ class ClubUpdate(BaseModel):
     location: str | None = None
     website_url: str | None = None
     is_active: bool | None = None
+    meeting_weekday: int | None = Field(None, ge=0, le=6)
+    meeting_start_time: str | None = None
+    meeting_end_time: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -204,6 +237,38 @@ class ClubUpdate(BaseModel):
             raise ValueError("website_url must be an http(s) URL.")
         return s
 
+    @field_validator("meeting_start_time", "meeting_end_time")
+    @classmethod
+    def optional_time_string(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        try:
+            parsed = time.fromisoformat(s)
+        except ValueError:
+            raise ValueError("Time must use HH:MM or HH:MM:SS format.")
+        return parsed.strftime("%H:%M")
+
+    @model_validator(mode="after")
+    def validate_meeting_schedule(self) -> "ClubUpdate":
+        provided_weekday = self.meeting_weekday is not None
+        provided_start = self.meeting_start_time is not None
+        provided_end = self.meeting_end_time is not None
+
+        if not (provided_weekday or provided_start or provided_end):
+            return self
+
+        if self.meeting_weekday is None and (provided_start or provided_end):
+            raise ValueError("meeting_weekday is required when meeting times are set.")
+        if self.meeting_weekday is not None and self.meeting_start_time is None and provided_end:
+            raise ValueError("meeting_start_time is required when meeting_end_time is set.")
+        if self.meeting_end_time is not None and self.meeting_start_time is not None:
+            if self.meeting_end_time <= self.meeting_start_time:
+                raise ValueError("meeting_end_time must be after meeting_start_time.")
+        return self
+
 
 class ClubOut(BaseModel):
     id: str
@@ -216,6 +281,9 @@ class ClubOut(BaseModel):
     website_url: str | None = None
     is_active: bool
     member_count: int
+    meeting_weekday: int | None = None
+    meeting_start_time: str | None = None
+    meeting_end_time: str | None = None
 
 
 class JoinedClubOut(ClubOut):
@@ -237,6 +305,9 @@ class RecommendedClubOut(BaseModel):
     website_url: str | None = None
     is_active: bool
     member_count: int
+    meeting_weekday: int | None = None
+    meeting_start_time: str | None = None
+    meeting_end_time: str | None = None
     score: int
 
 
@@ -551,6 +622,13 @@ def _serialize_club(club: models.Club) -> ClubOut:
         website_url=club.website_url,
         is_active=club.is_active,
         member_count=_club_member_count(club),
+        meeting_weekday=club.meeting_weekday,
+        meeting_start_time=(
+            club.meeting_start_time.strftime("%H:%M") if club.meeting_start_time else None
+        ),
+        meeting_end_time=(
+            club.meeting_end_time.strftime("%H:%M") if club.meeting_end_time else None
+        ),
     )
 
 
@@ -856,6 +934,13 @@ def _build_recommended_clubs(
             website_url=c.website_url,
             is_active=c.is_active,
             member_count=_club_member_count(c),
+            meeting_weekday=c.meeting_weekday,
+            meeting_start_time=(
+                c.meeting_start_time.strftime("%H:%M") if c.meeting_start_time else None
+            ),
+            meeting_end_time=(
+                c.meeting_end_time.strftime("%H:%M") if c.meeting_end_time else None
+            ),
             score=score,
         )
         for score, c in top
@@ -1295,6 +1380,13 @@ def create_club(
         location=payload.location,
         website_url=payload.website_url,
         is_active=payload.is_active if payload.is_active is not None else True,
+        meeting_weekday=payload.meeting_weekday,
+        meeting_start_time=(
+            time.fromisoformat(payload.meeting_start_time) if payload.meeting_start_time else None
+        ),
+        meeting_end_time=(
+            time.fromisoformat(payload.meeting_end_time) if payload.meeting_end_time else None
+        ),
     )
 
     db.add(club)
@@ -1451,6 +1543,20 @@ def update_club(
         club.website_url = data["website_url"]
     if "is_active" in data and data["is_active"] is not None:
         club.is_active = data["is_active"]
+    if "meeting_weekday" in data:
+        club.meeting_weekday = data["meeting_weekday"]
+    if "meeting_start_time" in data:
+        club.meeting_start_time = (
+            time.fromisoformat(data["meeting_start_time"]) if data["meeting_start_time"] else None
+        )
+    if "meeting_end_time" in data:
+        club.meeting_end_time = (
+            time.fromisoformat(data["meeting_end_time"]) if data["meeting_end_time"] else None
+        )
+
+    if club.meeting_weekday is None:
+        club.meeting_start_time = None
+        club.meeting_end_time = None
 
     db.commit()
     db.refresh(club)

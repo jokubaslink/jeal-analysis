@@ -207,6 +207,15 @@ export default function Dashboard() {
     );
   }, [registeredEvents]);
 
+  const joinedClubsWithRecurringTimes = useMemo(
+    () =>
+      joinedClubs.filter(
+        (club) =>
+          typeof club.meeting_weekday === "number" && club.meeting_start_time
+      ),
+    [joinedClubs]
+  );
+
   const hasSavedInterests = Boolean(userId && userInterests.length > 0);
 
   const interestsEmptyAction = (
@@ -396,7 +405,10 @@ export default function Dashboard() {
                 </Alert>
               ) : null}
 
-              <RegisteredEventsCalendar events={registeredEvents} />
+              <RegisteredEventsCalendar
+                events={registeredEvents}
+                clubAttendances={joinedClubsWithRecurringTimes}
+              />
 
               {!registeredEventsErrorMessage ? (
                 <div style={attendingLinksBlock}>

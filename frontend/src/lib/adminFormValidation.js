@@ -32,6 +32,9 @@ export function validateClubAdminForm({
   city,
   location,
   websiteUrl,
+  meetingWeekday,
+  meetingStartTime,
+  meetingEndTime,
 }) {
   const errors = {};
 
@@ -51,6 +54,27 @@ export function validateClubAdminForm({
   const url = validateOptionalHttpUrl(websiteUrl, "Website URL");
   if (!url.ok) errors.website_url = url.error;
 
+  const weekday = (meetingWeekday || "").trim();
+  const start = (meetingStartTime || "").trim();
+  const end = (meetingEndTime || "").trim();
+
+  const isValidTime = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  if (weekday && !start) {
+    errors.meeting_start_time = "Start time is required when a weekday is selected.";
+  }
+  if (!weekday && (start || end)) {
+    errors.meeting_weekday = "Choose a weekday when meeting times are set.";
+  }
+  if (start && !isValidTime(start)) {
+    errors.meeting_start_time = "Start time must use HH:MM.";
+  }
+  if (end && !isValidTime(end)) {
+    errors.meeting_end_time = "End time must use HH:MM.";
+  }
+  if (start && end && start >= end) {
+    errors.meeting_end_time = "End time must be after start time.";
+  }
+
   return {
     errors,
     trimmed: {
@@ -59,6 +83,9 @@ export function validateClubAdminForm({
       city: cityT || null,
       location: locT || null,
       website_url: url.ok ? url.value : null,
+      meeting_weekday: weekday ? Number(weekday) : null,
+      meeting_start_time: start || null,
+      meeting_end_time: end || null,
     },
   };
 }

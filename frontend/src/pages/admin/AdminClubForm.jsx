@@ -7,6 +7,15 @@ import AdminFieldError from "./AdminFieldError.jsx";
 
 const fieldClass = "flex flex-col gap-[length:var(--space-2)]";
 const hintClass = "m-0 text-[length:var(--font-size-caption)] text-[var(--color-ink-subtle)]";
+const WEEKDAY_OPTIONS = [
+  { value: "0", label: "Monday" },
+  { value: "1", label: "Tuesday" },
+  { value: "2", label: "Wednesday" },
+  { value: "3", label: "Thursday" },
+  { value: "4", label: "Friday" },
+  { value: "5", label: "Saturday" },
+  { value: "6", label: "Sunday" },
+];
 
 export default function AdminClubForm() {
   const { clubId } = useParams();
@@ -23,6 +32,9 @@ export default function AdminClubForm() {
   const [city, setCity] = useState("");
   const [location, setLocation] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [meetingWeekday, setMeetingWeekday] = useState("");
+  const [meetingStartTime, setMeetingStartTime] = useState("");
+  const [meetingEndTime, setMeetingEndTime] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [submitError, setSubmitError] = useState("");
@@ -49,6 +61,13 @@ export default function AdminClubForm() {
           setCity(club.city || "");
           setLocation(club.location || "");
           setWebsiteUrl(club.website_url || "");
+          setMeetingWeekday(
+            club.meeting_weekday === null || club.meeting_weekday === undefined
+              ? ""
+              : String(club.meeting_weekday)
+          );
+          setMeetingStartTime(club.meeting_start_time || "");
+          setMeetingEndTime(club.meeting_end_time || "");
           setIsActive(typeof club.is_active === "boolean" ? club.is_active : true);
         }
       } catch (e) {
@@ -84,6 +103,9 @@ export default function AdminClubForm() {
       city,
       location,
       websiteUrl,
+      meetingWeekday,
+      meetingStartTime,
+      meetingEndTime,
     });
 
     if (Object.keys(errors).length > 0) {
@@ -101,6 +123,9 @@ export default function AdminClubForm() {
       city: trimmed.city,
       location: trimmed.location,
       website_url: trimmed.website_url,
+      meeting_weekday: trimmed.meeting_weekday,
+      meeting_start_time: trimmed.meeting_start_time,
+      meeting_end_time: trimmed.meeting_end_time,
       is_active: isActive,
     };
 
@@ -261,6 +286,63 @@ export default function AdminClubForm() {
           />
           <AdminFieldError id="club-website-error" message={fieldErrors.website_url} />
           <p className={hintClass}>Optional. Must include http:// or https:// when provided.</p>
+        </div>
+
+        <div className="grid gap-[length:var(--space-5)] md:grid-cols-3">
+          <div className={fieldClass}>
+            <Label htmlFor="club-meeting-weekday">Recurring meeting day</Label>
+            <Select
+              id="club-meeting-weekday"
+              value={meetingWeekday}
+              onChange={(e) => {
+                setMeetingWeekday(e.target.value);
+                clearFieldError("meeting_weekday");
+              }}
+              aria-invalid={fieldErrors.meeting_weekday ? "true" : "false"}
+              aria-describedby={fieldErrors.meeting_weekday ? "club-meeting-weekday-error" : undefined}
+            >
+              <option value="">— No recurring time —</option>
+              {WEEKDAY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <AdminFieldError id="club-meeting-weekday-error" message={fieldErrors.meeting_weekday} />
+          </div>
+
+          <div className={fieldClass}>
+            <Label htmlFor="club-meeting-start">Start time</Label>
+            <Input
+              id="club-meeting-start"
+              type="time"
+              value={meetingStartTime}
+              onChange={(e) => {
+                setMeetingStartTime(e.target.value);
+                clearFieldError("meeting_start_time");
+              }}
+              aria-invalid={fieldErrors.meeting_start_time ? "true" : "false"}
+              aria-describedby={fieldErrors.meeting_start_time ? "club-meeting-start-error" : undefined}
+            />
+            <AdminFieldError id="club-meeting-start-error" message={fieldErrors.meeting_start_time} />
+          </div>
+
+          <div className={fieldClass}>
+            <Label htmlFor="club-meeting-end">End time</Label>
+            <Input
+              id="club-meeting-end"
+              type="time"
+              value={meetingEndTime}
+              onChange={(e) => {
+                setMeetingEndTime(e.target.value);
+                clearFieldError("meeting_end_time");
+              }}
+              aria-invalid={fieldErrors.meeting_end_time ? "true" : "false"}
+              aria-describedby={fieldErrors.meeting_end_time ? "club-meeting-end-error" : undefined}
+            />
+            <AdminFieldError id="club-meeting-end-error" message={fieldErrors.meeting_end_time} />
+            <p className={hintClass}>Shown in the user dashboard calendar as a recurring club activity.</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-[length:var(--space-4)]">

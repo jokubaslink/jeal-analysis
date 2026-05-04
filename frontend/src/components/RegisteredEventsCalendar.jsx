@@ -59,54 +59,121 @@ function formatTimeRange(start, end) {
   return `${startLabel} - ${endLabel}`;
 }
 
-function getInitialMonth(events) {
-  if (!Array.isArray(events) || events.length === 0) {
+function parseTimeParts(value) {
+  if (!value || typeof value !== "string") return null;
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+  if (!match) return null;
+  return {
+    hours: Number(match[1]),
+    minutes: Number(match[2]),
+  };
+}
+
+function clubWeekdayToJsDay(weekday) {
+  if (typeof weekday !== "number") return null;
+  return (weekday + 1) % 7;
+}
+
+function meetingWeekdayLabel(weekday) {
+  return WEEKDAY_NAMES[weekday] || "Club activity";
+}
+
+function buildClubOccurrence(club, day) {
+  const jsDay = clubWeekdayToJsDay(club.meeting_weekday);
+  const startParts = parseTimeParts(club.meeting_start_time);
+  if (jsDay === null || !startParts || day.getDay() !== jsDay) {
+    return null;
+  }
+
+  const start = new Date(day);
+  start.setHours(startParts.hours, startParts.minutes, 0, 0);
+
+  let end = null;
+  const endParts = parseTimeParts(club.meeting_end_time);
+  if (endParts) {
+    end = new Date(day);
+    end.setHours(endParts.hours, endParts.minutes, 0, 0);
+  }
+
+  const dateKey = toDateKey(start);
+  return {
+    id: `club-${club.id}-${dateKey}`,
+    type: "club",
+    source_id: club.id,
+    title: club.name,
+    start_time: start.toISOString(),
+    end_time: end ? end.toISOString() : null,
+    club_id: club.id,
+    club_name: club.name,
+    location: club.location,
+    city: club.city,
+    description:
+      club.description || "Recurring club activity shown from your joined club schedule.",
+    meeting_weekday: club.meeting_weekday,
+  };
+}
+
+function getInitialMonth(events, clubAttendances) {
+  if (Array.isArray(events) && events.length > 0) {
+    const now = Date.now();
+    const upcoming = events
+      .map((event) => new Date(event.start_time))
+      .filter((date) => !Number.isNaN(date.getTime()) && date.getTime() >= now)
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (upcoming.length > 0) {
+      return startOfMonth(upcoming[0]);
+    }
+
+    const sorted = events
+      .map((event) => new Date(event.start_time))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (sorted.length > 0) {
+      return startOfMonth(sorted[0]);
+    }
+  }
+
+  const hasRecurringClubs = (clubAttendances || []).some(
+    (club) =>
+      typeof club.meeting_weekday === "number" &&
+      typeof club.meeting_start_time === "string"
+  );
+  if (hasRecurringClubs) {
     return startOfMonth(new Date());
   }
 
-  const now = Date.now();
-  const upcoming = events
-    .map((event) => new Date(event.start_time))
-    .filter((date) => !Number.isNaN(date.getTime()) && date.getTime() >= now)
-    .sort((a, b) => a.getTime() - b.getTime());
+  return startOfMonth(new Date());
+}
 
-  if (upcoming.length > 0) {
-    return startOfMonth(upcoming[0]);
-  }
-
-  const sorted = events
-    .map((event) => new Date(event.start_time))
-    .filter((date) => !Number.isNaN(date.getTime()))
-    .sort((a, b) => a.getTime() - b.getTime());
-
-  return sorted.length > 0 ? startOfMonth(sorted[0]) : startOfMonth(new Date());
+function entryTypeLabel(entry) {
+  return entry.type === "club" ? "Club activity" : "Registered event";
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 
-export default function RegisteredEventsCalendar({ events }) {
-  const [visibleMonth, setVisibleMonth] = useState(() => getInitialMonth(events));
-  const [selectedEventId, setSelectedEventId] = useState(null);
-
-  const eventsByDate = useMemo(() => {
-    const grouped = new Map();
-    events.forEach((event) => {
-      const key = toDateKey(event.start_time);
-      if (!key) return;
-      const existing = grouped.get(key) || [];
-      existing.push(event);
-      existing.sort(
-        (a, b) =>
-          new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-      );
-      grouped.set(key, existing);
-    });
-    return grouped;
-  }, [events]);
+export default function RegisteredEventsCalendar({
+  events,
+  clubAttendances = [],
+}) {
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    getInitialMonth(events, clubAttendances)
+  );
+  const [selectedEntryId, setSelectedEntryId] = useState(null);
 
   useEffect(() => {
-    setVisibleMonth(getInitialMonth(events));
-  }, [events]);
+    setVisibleMonth(getInitialMonth(events, clubAttendances));
+  }, [events, clubAttendances]);
 
   const calendarDays = useMemo(() => {
     const firstDayOfMonth = startOfMonth(visibleMonth);
@@ -114,28 +181,78 @@ export default function RegisteredEventsCalendar({ events }) {
     return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
   }, [visibleMonth]);
 
-  const selectedEvent = useMemo(
-    () => events.find((event) => event.id === selectedEventId) || null,
-    [events, selectedEventId]
+  const clubEntries = useMemo(() => {
+    const occurrences = [];
+    const seen = new Set();
+    calendarDays.forEach((day) => {
+      clubAttendances.forEach((club) => {
+        const occurrence = buildClubOccurrence(club, day);
+        if (!occurrence || seen.has(occurrence.id)) return;
+        seen.add(occurrence.id);
+        occurrences.push(occurrence);
+      });
+    });
+    return occurrences;
+  }, [calendarDays, clubAttendances]);
+
+  const allEntries = useMemo(() => {
+    const combined = [
+      ...(Array.isArray(events)
+        ? events.map((event) => ({
+            ...event,
+            type: "event",
+            source_id: event.id,
+          }))
+        : []),
+      ...clubEntries,
+    ];
+
+    combined.sort((a, b) => {
+      const aTime = new Date(a.start_time).getTime();
+      const bTime = new Date(b.start_time).getTime();
+      return aTime - bTime;
+    });
+    return combined;
+  }, [events, clubEntries]);
+
+  const entriesByDate = useMemo(() => {
+    const grouped = new Map();
+    allEntries.forEach((entry) => {
+      const key = toDateKey(entry.start_time);
+      if (!key) return;
+      const existing = grouped.get(key) || [];
+      existing.push(entry);
+      existing.sort(
+        (a, b) =>
+          new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      );
+      grouped.set(key, existing);
+    });
+    return grouped;
+  }, [allEntries]);
+
+  const selectedEntry = useMemo(
+    () => allEntries.find((entry) => entry.id === selectedEntryId) || null,
+    [allEntries, selectedEntryId]
   );
-  const selectedDateKey = selectedEvent ? toDateKey(selectedEvent.start_time) : null;
-  const selectedDateEvents = useMemo(() => {
+  const selectedDateKey = selectedEntry ? toDateKey(selectedEntry.start_time) : null;
+  const selectedDateEntries = useMemo(() => {
     if (!selectedDateKey) return [];
-    return eventsByDate.get(selectedDateKey) || [];
-  }, [eventsByDate, selectedDateKey]);
+    return entriesByDate.get(selectedDateKey) || [];
+  }, [entriesByDate, selectedDateKey]);
 
   useEffect(() => {
-    if (events.length === 0) {
-      setSelectedEventId(null);
+    if (allEntries.length === 0) {
+      setSelectedEntryId(null);
       return;
     }
 
-    if (selectedEventId && events.some((event) => event.id === selectedEventId)) {
+    if (selectedEntryId && allEntries.some((entry) => entry.id === selectedEntryId)) {
       return;
     }
 
-    const monthMatch = events.find((event) => {
-      const date = new Date(event.start_time);
+    const monthMatch = allEntries.find((entry) => {
+      const date = new Date(entry.start_time);
       return (
         !Number.isNaN(date.getTime()) &&
         date.getFullYear() === visibleMonth.getFullYear() &&
@@ -143,8 +260,8 @@ export default function RegisteredEventsCalendar({ events }) {
       );
     });
 
-    setSelectedEventId((monthMatch || events[0]).id);
-  }, [events, selectedEventId, visibleMonth]);
+    setSelectedEntryId((monthMatch || allEntries[0]).id);
+  }, [allEntries, selectedEntryId, visibleMonth]);
 
   return (
     <div style={shell}>
@@ -178,12 +295,23 @@ export default function RegisteredEventsCalendar({ events }) {
         </button>
       </div>
 
-      {events.length === 0 ? (
+      {allEntries.length === 0 ? (
         <p style={emptyMessage}>
-          No registered events yet. The calendar is ready for your schedule once you
-          mark an event as registered.
+          No registered events or club attendance times yet. The calendar is ready
+          once you register for events or join clubs with recurring activities.
         </p>
       ) : null}
+
+      <div style={legendRow}>
+        <span style={legendItem}>
+          <span style={{ ...legendSwatch, ...eventLegendSwatch }} />
+          Registered events
+        </span>
+        <span style={legendItem}>
+          <span style={{ ...legendSwatch, ...clubLegendSwatch }} />
+          Club activities
+        </span>
+      </div>
 
       <div style={weekdayRow} aria-hidden="true">
         {WEEKDAYS.map((day) => (
@@ -196,7 +324,7 @@ export default function RegisteredEventsCalendar({ events }) {
       <div style={calendarGrid}>
         {calendarDays.map((day) => {
           const dateKey = toDateKey(day);
-          const dayEvents = (dateKey && eventsByDate.get(dateKey)) || [];
+          const dayEntries = (dateKey && entriesByDate.get(dateKey)) || [];
           const inMonth = day.getMonth() === visibleMonth.getMonth();
           const isToday = toDateKey(day) === toDateKey(new Date());
           const isSelectedDay = selectedDateKey === dateKey;
@@ -213,40 +341,41 @@ export default function RegisteredEventsCalendar({ events }) {
             >
               <div style={dayHeader}>
                 <span style={dayNumber}>{day.getDate()}</span>
-                {dayEvents.length > 0 ? (
+                {dayEntries.length > 0 ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedEventId(dayEvents[0].id)}
+                    onClick={() => setSelectedEntryId(dayEntries[0].id)}
                     style={daySummaryButton}
                     aria-label={`${day.toLocaleDateString([], {
                       weekday: "long",
                       month: "long",
                       day: "numeric",
-                    })}, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
+                    })}, ${dayEntries.length} item${dayEntries.length === 1 ? "" : "s"}`}
                   >
-                    {dayEvents.length} event{dayEvents.length === 1 ? "" : "s"}
+                    {dayEntries.length} item{dayEntries.length === 1 ? "" : "s"}
                   </button>
                 ) : null}
               </div>
               <div style={eventStack}>
-                {dayEvents.slice(0, 3).map((event) => {
-                  const isSelected = event.id === selectedEventId;
+                {dayEntries.slice(0, 3).map((entry) => {
+                  const isSelected = entry.id === selectedEntryId;
                   return (
                     <button
-                      key={event.id}
+                      key={entry.id}
                       type="button"
-                      onClick={() => setSelectedEventId(event.id)}
+                      onClick={() => setSelectedEntryId(entry.id)}
                       style={{
                         ...eventPill,
+                        ...(entry.type === "club" ? clubEventPill : null),
                         ...(isSelected ? selectedEventPill : null),
                       }}
                     >
-                      {event.title}
+                      {entry.title}
                     </button>
                   );
                 })}
-                {dayEvents.length > 3 ? (
-                  <span style={overflowLabel}>+{dayEvents.length - 3} more</span>
+                {dayEntries.length > 3 ? (
+                  <span style={overflowLabel}>+{dayEntries.length - 3} more</span>
                 ) : null}
               </div>
             </div>
@@ -255,59 +384,75 @@ export default function RegisteredEventsCalendar({ events }) {
       </div>
 
       <div style={detailsPanel}>
-        {selectedEvent ? (
+        {selectedEntry ? (
           <>
             <div style={detailsHeader}>
               <div>
-                <p style={detailsEyebrow}>Selected event</p>
-                <h3 style={detailsTitle}>{selectedEvent.title}</h3>
+                <p style={detailsEyebrow}>{entryTypeLabel(selectedEntry)}</p>
+                <h3 style={detailsTitle}>{selectedEntry.title}</h3>
               </div>
-              <Link to={`/events/${selectedEvent.id}`} style={detailsLink}>
+              <Link
+                to={
+                  selectedEntry.type === "club"
+                    ? `/clubs/${selectedEntry.club_id}`
+                    : `/events/${selectedEntry.id}`
+                }
+                style={detailsLink}
+              >
                 View details
               </Link>
             </div>
-            {selectedDateEvents.length > 1 ? (
+            {selectedDateEntries.length > 1 ? (
               <div style={sameDaySelector}>
-                <p style={sameDayLabel}>Events on this day</p>
+                <p style={sameDayLabel}>Items on this day</p>
                 <div style={sameDayButtonRow}>
-                  {selectedDateEvents.map((event) => {
-                    const isActive = event.id === selectedEventId;
+                  {selectedDateEntries.map((entry) => {
+                    const isActive = entry.id === selectedEntryId;
                     return (
                       <button
-                        key={event.id}
+                        key={entry.id}
                         type="button"
-                        onClick={() => setSelectedEventId(event.id)}
+                        onClick={() => setSelectedEntryId(entry.id)}
                         style={{
                           ...sameDayButton,
+                          ...(entry.type === "club" ? clubSameDayButton : null),
                           ...(isActive ? sameDayButtonActive : null),
                         }}
                       >
-                        {event.title}
+                        {entry.title}
                       </button>
                     );
                   })}
                 </div>
               </div>
             ) : null}
-            <p style={detailsMeta}>{formatDateTime(selectedEvent.start_time)}</p>
+            <p style={detailsMeta}>{formatDateTime(selectedEntry.start_time)}</p>
             <p style={detailsMeta}>
-              {formatTimeRange(selectedEvent.start_time, selectedEvent.end_time)}
+              {formatTimeRange(selectedEntry.start_time, selectedEntry.end_time)}
             </p>
-            {selectedEvent.club_name ? (
-              <p style={detailsMeta}>Hosted by {selectedEvent.club_name}</p>
-            ) : null}
-            {selectedEvent.location || selectedEvent.city ? (
+            {selectedEntry.type === "club" && selectedEntry.meeting_weekday !== undefined ? (
               <p style={detailsMeta}>
-                {[selectedEvent.location, selectedEvent.city].filter(Boolean).join(", ")}
+                Recurs every {meetingWeekdayLabel(selectedEntry.meeting_weekday)}
+              </p>
+            ) : null}
+            {selectedEntry.club_name && selectedEntry.type !== "club" ? (
+              <p style={detailsMeta}>Hosted by {selectedEntry.club_name}</p>
+            ) : null}
+            {selectedEntry.location || selectedEntry.city ? (
+              <p style={detailsMeta}>
+                {[selectedEntry.location, selectedEntry.city].filter(Boolean).join(", ")}
               </p>
             ) : null}
             <p style={detailsDescription}>
-              {selectedEvent.description || "No description provided yet."}
+              {selectedEntry.description ||
+                (selectedEntry.type === "club"
+                  ? "Recurring club activity shown from your joined club schedule."
+                  : "No description provided yet.")}
             </p>
           </>
         ) : (
           <p style={placeholderText}>
-            Select an event on the calendar to see its details here.
+            Select an event or club activity on the calendar to see its details here.
           </p>
         )}
       </div>
@@ -352,6 +497,37 @@ const emptyMessage = {
   color: "#4b5563",
   fontSize: "14px",
   lineHeight: 1.6,
+};
+
+const legendRow = {
+  display: "flex",
+  gap: "14px",
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const legendItem = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  color: "#4b5563",
+  fontSize: "12px",
+  fontWeight: 700,
+};
+
+const legendSwatch = {
+  width: "12px",
+  height: "12px",
+  borderRadius: "999px",
+  display: "inline-block",
+};
+
+const eventLegendSwatch = {
+  background: "rgba(14, 165, 233, 0.5)",
+};
+
+const clubLegendSwatch = {
+  background: "rgba(16, 185, 129, 0.55)",
 };
 
 const weekdayRow = {
@@ -449,6 +625,11 @@ const eventPill = {
   cursor: "pointer",
 };
 
+const clubEventPill = {
+  background: "rgba(16, 185, 129, 0.14)",
+  color: "#065f46",
+};
+
 const selectedEventPill = {
   background: "#0f172a",
   color: "#ffffff",
@@ -538,6 +719,12 @@ const sameDayButton = {
   fontSize: "12px",
   fontWeight: 600,
   cursor: "pointer",
+};
+
+const clubSameDayButton = {
+  border: "1px solid rgba(16, 185, 129, 0.18)",
+  background: "rgba(16, 185, 129, 0.08)",
+  color: "#065f46",
 };
 
 const sameDayButtonActive = {
