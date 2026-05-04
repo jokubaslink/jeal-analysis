@@ -7,12 +7,201 @@ import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
+const QUICK_RECOMMENDATION_SHORTCUTS = [
+  {
+    id: "personalized",
+    label: "For me",
+    description: "Use my saved interests",
+  },
+  {
+    id: "social-chill",
+    label: "Social/chill",
+    description: "Meet people, low-pressure hangouts",
+    keywords: [
+      "social",
+      "community",
+      "volunteer",
+      "student union",
+      "meetup",
+      "hangout",
+      "chill",
+      "relax",
+      "coffee",
+      "cafe",
+      "kavine",
+      "culture",
+      "arts",
+      "hobbies",
+      "lifestyle",
+      "board game",
+      "movie",
+    ],
+  },
+  {
+    id: "party",
+    label: "Party",
+    description: "Music, dancing, nightlife energy",
+    keywords: [
+      "party",
+      "nightlife",
+      "club night",
+      "dance",
+      "dj",
+      "music",
+      "concert",
+      "festival",
+      "bar",
+      "afterparty",
+      "karaoke",
+      "social",
+      "celebration",
+    ],
+  },
+  {
+    id: "creative",
+    label: "Creative",
+    description: "Arts, culture, music, making things",
+    keywords: [
+      "art",
+      "arts",
+      "culture",
+      "creative",
+      "design",
+      "music",
+      "theatre",
+      "theater",
+      "film",
+      "photo",
+      "photography",
+      "literature",
+      "writing",
+      "craft",
+      "exhibition",
+      "gallery",
+    ],
+  },
+  {
+    id: "active",
+    label: "Active",
+    description: "Sports, fitness, movement",
+    keywords: [
+      "sport",
+      "sports",
+      "fitness",
+      "training",
+      "run",
+      "running",
+      "gym",
+      "yoga",
+      "basketball",
+      "football",
+      "volleyball",
+      "dance",
+      "hike",
+      "hiking",
+      "outdoor",
+    ],
+  },
+  {
+    id: "tech",
+    label: "Tech",
+    description: "STEM, coding, projects, builders",
+    keywords: [
+      "stem",
+      "technology",
+      "tech",
+      "programming",
+      "coding",
+      "code",
+      "software",
+      "engineering",
+      "science",
+      "robotics",
+      "hackathon",
+      "startup",
+      "data",
+      "ai",
+      "project",
+    ],
+  },
+  {
+    id: "career",
+    label: "Career",
+    description: "Networking, skills, future plans",
+    keywords: [
+      "career",
+      "networking",
+      "workshop",
+      "skills",
+      "seminar",
+      "lecture",
+      "talk",
+      "mentor",
+      "mentorship",
+      "business",
+      "entrepreneur",
+      "startup",
+      "job",
+      "internship",
+      "professional",
+    ],
+  },
+  {
+    id: "help-out",
+    label: "Help out",
+    description: "Volunteering and community impact",
+    keywords: [
+      "volunteer",
+      "volunteering",
+      "community",
+      "charity",
+      "social initiative",
+      "support",
+      "help",
+      "fundraiser",
+      "donation",
+      "environment",
+      "sustainability",
+      "student union",
+      "campus",
+    ],
+  },
+];
+
+function getRecommendationSearchText(item) {
+  return [
+    item.name,
+    item.title,
+    item.description,
+    item.category,
+    item.category_name,
+    item.club_name,
+    item.city,
+    item.location,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesShortcut(item, shortcut) {
+  if (!shortcut?.keywords) {
+    return true;
+  }
+
+  const searchText = getRecommendationSearchText(item);
+  return shortcut.keywords.some((keyword) => searchText.includes(keyword));
+}
+
 export default function Results() {
   const navigate = useNavigate();
   const { userId, logout } = useAuth();
   const [interests, setInterests] = useState([]);
   const [clubs, setClubs] = useState([]);
   const [events, setEvents] = useState([]);
+  const [allClubs, setAllClubs] = useState([]);
+  const [allEvents, setAllEvents] = useState([]);
+  const [activeShortcutId, setActiveShortcutId] = useState("personalized");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [reloadSeed, setReloadSeed] = useState(0);
@@ -32,11 +221,19 @@ export default function Results() {
       try {
         await syncPendingOnboardingToUser(userId, apiFetch);
 
-        const [savedInterestsResult, recommendedClubsResult, recommendedEventsResult] =
+        const [
+          savedInterestsResult,
+          recommendedClubsResult,
+          recommendedEventsResult,
+          allClubsResult,
+          allEventsResult,
+        ] =
           await Promise.allSettled([
           apiFetch(`/users/${userId}/interests`),
           apiFetch("/clubs/recommended"),
           apiFetch("/events/recommended"),
+          apiFetch("/clubs"),
+          apiFetch("/events"),
           ]);
 
         if (ignore) {
@@ -61,9 +258,23 @@ export default function Results() {
           setEvents([]);
         }
 
+        if (allClubsResult.status === "fulfilled") {
+          setAllClubs(Array.isArray(allClubsResult.value) ? allClubsResult.value : []);
+        } else {
+          setAllClubs([]);
+        }
+
+        if (allEventsResult.status === "fulfilled") {
+          setAllEvents(Array.isArray(allEventsResult.value) ? allEventsResult.value : []);
+        } else {
+          setAllEvents([]);
+        }
+
         const recommendationErrors = [
           recommendedClubsResult,
           recommendedEventsResult,
+          allClubsResult,
+          allEventsResult,
         ].filter((result) => result.status === "rejected");
 
         if (recommendationErrors.length > 0) {
@@ -115,7 +326,34 @@ export default function Results() {
     [events]
   );
 
+  const activeShortcut = useMemo(
+    () =>
+      QUICK_RECOMMENDATION_SHORTCUTS.find(
+        (shortcut) => shortcut.id === activeShortcutId
+      ) || QUICK_RECOMMENDATION_SHORTCUTS[0],
+    [activeShortcutId]
+  );
+
+  const displayedClubs = useMemo(() => {
+    if (activeShortcut.id === "personalized") {
+      return clubs;
+    }
+
+    return allClubs.filter((club) => matchesShortcut(club, activeShortcut));
+  }, [activeShortcut, allClubs, clubs]);
+
+  const displayedEvents = useMemo(() => {
+    if (activeShortcut.id === "personalized") {
+      return upcomingSuggestedEvents;
+    }
+
+    return allEvents
+      .filter((event) => !isEventPast(event))
+      .filter((event) => matchesShortcut(event, activeShortcut));
+  }, [activeShortcut, allEvents, upcomingSuggestedEvents]);
+
   const hasSavedInterests = interests.length > 0;
+  const isPersonalizedShortcut = activeShortcut.id === "personalized";
 
   const interestsEmptyAction = (
     <Button asChild variant="secondary">
@@ -172,6 +410,40 @@ export default function Results() {
       </section>
 
       <div style={resultsGrid}>
+        <section style={{ ...panel, gridColumn: "1 / -1" }}>
+          <div style={sectionHeader}>
+            <div>
+              <h2 style={sectionTitle}>Quick recommendations</h2>
+              <p style={sectionIntro}>
+                Pick the kind of plan you are in the mood for.
+              </p>
+            </div>
+            <span style={countPill}>{displayedClubs.length + displayedEvents.length}</span>
+          </div>
+
+          <div style={shortcutGrid} aria-label="Quick recommendation shortcuts">
+            {QUICK_RECOMMENDATION_SHORTCUTS.map((shortcut) => {
+              const isActive = shortcut.id === activeShortcut.id;
+
+              return (
+                <button
+                  key={shortcut.id}
+                  type="button"
+                  style={{
+                    ...shortcutButton,
+                    ...(isActive ? shortcutButtonActive : {}),
+                  }}
+                  onClick={() => setActiveShortcutId(shortcut.id)}
+                  aria-pressed={isActive}
+                >
+                  <span style={shortcutLabel}>{shortcut.label}</span>
+                  <span style={shortcutDescription}>{shortcut.description}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         <section style={panel}>
           <div style={sectionHeader}>
             <h2 style={sectionTitle}>Suggested interests</h2>
@@ -206,16 +478,18 @@ export default function Results() {
         <section style={panel}>
           <div style={sectionHeader}>
             <h2 style={sectionTitle}>Suggested clubs</h2>
-            <span style={countPill}>{clubs.length}</span>
+            <span style={countPill}>{displayedClubs.length}</span>
           </div>
 
-          {clubs.length > 0 ? (
+          {displayedClubs.length > 0 ? (
             <div style={stack}>
-              {clubs.map((club) => (
+              {displayedClubs.map((club) => (
                 <article key={club.id} style={recommendationCard}>
                   <div style={cardTopRow}>
                     <h3 style={cardTitle}>{club.name}</h3>
-                    <span style={scoreBadge}>Score {club.score}</span>
+                    <span style={scoreBadge}>
+                      {club.score ? `Score ${club.score}` : activeShortcut.label}
+                    </span>
                   </div>
                   <p style={cardMeta}>
                     {club.category_name || "General"}
@@ -232,11 +506,13 @@ export default function Results() {
               align="left"
               title="No club matches yet"
               description={
-                hasSavedInterests
+                !isPersonalizedShortcut
+                  ? `No clubs matched the ${activeShortcut.label.toLowerCase()} shortcut yet. Try another shortcut or add clubs with matching categories/descriptions.`
+                  : hasSavedInterests
                   ? "Add more interests or seed more club data to expand results."
                   : INTERESTS_EMPTY_FOR_RECOMMENDATIONS
               }
-              action={hasSavedInterests ? undefined : interestsEmptyAction}
+              action={!isPersonalizedShortcut || hasSavedInterests ? undefined : interestsEmptyAction}
             />
           )}
         </section>
@@ -244,16 +520,18 @@ export default function Results() {
         <section style={{ ...panel, gridColumn: "1 / -1" }}>
           <div style={sectionHeader}>
             <h2 style={sectionTitle}>Suggested events</h2>
-            <span style={countPill}>{upcomingSuggestedEvents.length}</span>
+            <span style={countPill}>{displayedEvents.length}</span>
           </div>
 
-          {upcomingSuggestedEvents.length > 0 ? (
+          {displayedEvents.length > 0 ? (
             <div style={eventGrid}>
-              {upcomingSuggestedEvents.map((event) => (
+              {displayedEvents.map((event) => (
                 <article key={event.id} style={recommendationCard}>
                   <div style={cardTopRow}>
                     <h3 style={cardTitle}>{event.title}</h3>
-                    <span style={scoreBadge}>Score {event.score}</span>
+                    <span style={scoreBadge}>
+                      {event.score ? `Score ${event.score}` : activeShortcut.label}
+                    </span>
                   </div>
                   <p style={cardMeta}>
                     {event.club_name || event.category_name || "Upcoming event"}
@@ -275,13 +553,15 @@ export default function Results() {
               align="left"
               title="No upcoming event matches yet"
               description={
-                !hasSavedInterests
+                !isPersonalizedShortcut
+                  ? `No upcoming events matched the ${activeShortcut.label.toLowerCase()} shortcut yet. Try another shortcut or add events with matching categories/descriptions.`
+                  : !hasSavedInterests
                   ? INTERESTS_EMPTY_FOR_RECOMMENDATIONS
                   : events.length > 0
                     ? "Older matches are hidden here so you can focus on what is still ahead."
                     : "The recommendations area is ready once matching data exists."
               }
-              action={!hasSavedInterests ? interestsEmptyAction : undefined}
+              action={isPersonalizedShortcut && !hasSavedInterests ? interestsEmptyAction : undefined}
             />
           )}
         </section>
@@ -369,6 +649,12 @@ const sectionTitle = {
   fontWeight: 700,
 };
 
+const sectionIntro = {
+  margin: "6px 0 0 0",
+  color: "#4b5563",
+  fontSize: "14px",
+};
+
 const countPill = {
   display: "inline-flex",
   alignItems: "center",
@@ -387,6 +673,44 @@ const stack = {
   display: "flex",
   flexDirection: "column",
   gap: "14px",
+};
+
+const shortcutGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "12px",
+};
+
+const shortcutButton = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: "6px",
+  minHeight: "86px",
+  padding: "14px",
+  borderRadius: "16px",
+  border: "1px solid #e5e7eb",
+  background: "#fcfcfd",
+  color: "#111827",
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const shortcutButtonActive = {
+  border: "1px solid #c2410c",
+  background: "#fff7ed",
+  boxShadow: "0 10px 24px rgba(194, 65, 12, 0.12)",
+};
+
+const shortcutLabel = {
+  fontSize: "15px",
+  fontWeight: 800,
+};
+
+const shortcutDescription = {
+  color: "#4b5563",
+  fontSize: "13px",
+  lineHeight: 1.35,
 };
 
 const groupCard = {

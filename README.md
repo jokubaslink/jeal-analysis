@@ -58,7 +58,7 @@ When you change tokens, update `design-tokens.css` and keep the `:root` block in
 
   On Windows, if `alembic` is not on your `PATH`, use `python -m alembic` as shown above.
 
-  This applies the schema migrations and seeds sample interest categories, interests, clubs, and events for development/testing.
+  This applies the schema migrations and seeds sample interest categories, interests, clubs, and a richer event set for development/testing. The latest seed data includes real Lithuanian university organisations and official 2026 event listings with source URLs, covering sports, arts, STEM, social/community, and hobbies across multiple upcoming dates so recommendations, filters, event details, and dashboard registrations have realistic data.
 
 ### Default admin account (development)
 
