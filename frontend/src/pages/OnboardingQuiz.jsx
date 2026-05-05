@@ -37,6 +37,14 @@ export default function OnboardingQuiz() {
   const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState(() =>
     hydrateQuizAnswersFromStorage()
   );
+  const [quizPhase, setQuizPhase] = useState(() => {
+    const saved = hydrateQuizAnswersFromStorage();
+    return Object.keys(saved).length >= ONBOARDING_QUIZ_QUESTIONS.length
+      ? "interests"
+      : "quiz";
+  });
+  const [quizQuestionStep, setQuizQuestionStep] = useState(0);
+  const [isAdvancing, setIsAdvancing] = useState(false);
   const returnTo = location.state?.from || "/results";
 
   useEffect(() => {
@@ -213,28 +221,34 @@ export default function OnboardingQuiz() {
     });
   };
 
-  const handleSelectQuestionOption = (questionId, optionId) => {
+  const handleSelectAndAdvance = (questionId, optionId) => {
+    if (isAdvancing) return;
     setSaveMessage("");
     setSaveError("");
-    setQuizAnswersByQuestionId((previous) => {
-      const next = { ...previous, [questionId]: optionId };
-      writeOnboardingQuizAnswers(Object.values(next));
-      return next;
-    });
-  };
+    setIsAdvancing(true);
 
-  const handleApplyQuizSuggestions = () => {
-    if (suggestedInterestIds.length === 0) {
-      setSaveError("Answer quiz questions to generate interest suggestions.");
-      return;
-    }
-    setSaveError("");
-    setSaveMessage("Quiz suggestions applied to your interests.");
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      suggestedInterestIds.forEach((interestId) => next.add(interestId));
-      return next;
-    });
+    const updatedAnswers = { ...quizAnswersByQuestionId, [questionId]: optionId };
+    setQuizAnswersByQuestionId(updatedAnswers);
+    writeOnboardingQuizAnswers(Object.values(updatedAnswers));
+
+    const isLastQuestion = quizQuestionStep === ONBOARDING_QUIZ_QUESTIONS.length - 1;
+
+    window.setTimeout(() => {
+      setIsAdvancing(false);
+      if (!isLastQuestion) {
+        setQuizQuestionStep((q) => q + 1);
+      } else {
+        const allAnswerIds = Object.values(updatedAnswers);
+        const boosted = computeBoostedCategoryScores(allAnswerIds);
+        const suggested = suggestInterestIdsFromCategoryScores(boosted, categories, interests);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          suggested.forEach((id) => next.add(id));
+          return next;
+        });
+        setQuizPhase("interests");
+      }
+    }, 280);
   };
 
   const saveSelections = useCallback(async () => {
@@ -295,8 +309,8 @@ export default function OnboardingQuiz() {
   if (isLoading || !hasLoadedSavedSelections) {
     return (
       <div style={page}>
-        <section style={shell}>
-          <div style={heroCard}>
+        <section style={quizPhaseShell}>
+          <div style={quizPhaseCard}>
             <Skeleton style={skeletonBar} />
             <Skeleton style={skeletonTitle} />
             <Skeleton style={skeletonText} />
@@ -314,14 +328,16 @@ export default function OnboardingQuiz() {
   if (error) {
     return (
       <div style={page}>
-        <section style={shell}>
-          <div style={heroCard}>
+        <section style={quizPhaseShell}>
+          <div style={quizPhaseCard}>
             <p style={eyebrow}>Onboarding quiz</p>
-            <h1 style={title}>We could not load the quiz</h1>
+            <h2 style={{ margin: "12px 0 0 0", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
+              We could not load the quiz
+            </h2>
             <Alert variant="error" className="mt-[length:var(--space-6)]">
               {error}
             </Alert>
-            <button type="button" style={primaryButton} onClick={() => window.location.reload()}>
+            <button type="button" style={{ ...primaryButton, marginTop: "16px" }} onClick={() => window.location.reload()}>
               Retry
             </button>
           </div>
@@ -333,8 +349,8 @@ export default function OnboardingQuiz() {
   if (!currentCategory) {
     return (
       <div style={page}>
-        <section style={shell}>
-          <div style={heroCard}>
+        <section style={quizPhaseShell}>
+          <div style={quizPhaseCard}>
             <p style={eyebrow}>Onboarding quiz</p>
             <EmptyState
               align="left"
@@ -347,86 +363,142 @@ export default function OnboardingQuiz() {
     );
   }
 
-  return (
-    <div style={page}>
-      <section style={shell}>
-        <div style={heroCard}>
-          <div style={heroHeader}>
-            <div>
+  if (quizPhase === "quiz") {
+    const totalQuestions = ONBOARDING_QUIZ_QUESTIONS.length;
+    const currentQuestion = ONBOARDING_QUIZ_QUESTIONS[quizQuestionStep];
+    const currentAnswer = quizAnswersByQuestionId[currentQuestion.id];
+
+    return (
+      <div style={page}>
+        <section style={quizPhaseShell}>
+          <div style={quizPhaseCard}>
+            <div style={quizPhaseTop}>
               <p style={eyebrow}>Personalize your JEAL experience</p>
-              <h1 style={title}>Start with a quick interest quiz</h1>
-            </div>
-            <div style={headerActions}>
-              <button type="button" onClick={handleSkipQuiz} style={ghostButton}>
-                Skip quiz
-              </button>
-              <div style={statusPill}>
-                {selectedIds.size} picked
-              </div>
-            </div>
-          </div>
-
-          <div style={progressHeader}>
-            <div>
-              <p style={progressLabel}>Step {currentStep + 1} of {totalSteps}</p>
-              <h2 style={stepTitle}>{currentCategory.name}</h2>
-              <p style={stepDescription}>
-                {currentCategory.description ||
-                  "Choose the options that feel most relevant to you."}
-              </p>
-            </div>
-            <div style={progressMeta}>
-              <span style={progressPercent}>{Math.round(progressValue)}%</span>
-              <span style={progressHint}>
-                {currentStepHasSelection
-                  ? `${currentStepSelections.length} selected in this step`
-                  : "Pick one or more to continue"}
-              </span>
-            </div>
-          </div>
-
-          <section style={quizQuestionSection}>
-            <div style={quizQuestionHeader}>
-              <p style={quizQuestionTitle}>Quick preference questions</p>
-              <button type="button" onClick={handleApplyQuizSuggestions} style={ghostButton}>
-                Apply suggestions
+              <button
+                type="button"
+                onClick={() => setQuizPhase("interests")}
+                style={ghostButton}
+              >
+                Skip
               </button>
             </div>
-            <div style={quizQuestionGrid}>
-              {ONBOARDING_QUIZ_QUESTIONS.map((question) => (
-                <div key={question.id} style={quizQuestionCard}>
-                  <p style={quizPrompt}>{question.prompt}</p>
-                  <div style={quizOptionList}>
-                    {question.options.map((option) => {
-                      const isSelected = quizAnswersByQuestionId[question.id] === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => handleSelectQuestionOption(question.id, option.id)}
-                          aria-label={`${isSelected ? "Selected option" : "Choose option"} ${option.label}`}
-                          aria-pressed={isSelected}
-                          style={{
-                            ...quizOptionButton,
-                            borderColor: isSelected ? "#113c2d" : "rgba(17, 24, 39, 0.12)",
-                            backgroundColor: isSelected ? "#ecfccb" : "white",
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+
+            <div style={quizDots}>
+              {ONBOARDING_QUIZ_QUESTIONS.map((q, i) => (
+                <div
+                  key={q.id}
+                  style={{
+                    ...quizDot,
+                    width: i === quizQuestionStep ? 22 : 8,
+                    backgroundColor:
+                      i < quizQuestionStep
+                        ? "#113c2d"
+                        : i === quizQuestionStep
+                        ? "#84cc16"
+                        : "rgba(17,24,39,0.15)",
+                  }}
+                />
               ))}
             </div>
-          </section>
 
-          <div style={progressTrack}>
-            <div style={{ ...progressFill, width: `${progressValue}%` }} />
+            <p style={quizStepLabel}>Question {quizQuestionStep + 1} of {totalQuestions}</p>
+            <h2 style={quizQuestionHeading}>{currentQuestion.prompt}</h2>
+
+            <div style={quizOptionsList}>
+              {currentQuestion.options.map((option) => {
+                const isSelected = currentAnswer === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    disabled={isAdvancing}
+                    onClick={() => handleSelectAndAdvance(currentQuestion.id, option.id)}
+                    aria-pressed={isSelected}
+                    style={{
+                      ...quizOptionRow,
+                      borderColor: isSelected ? "#113c2d" : "rgba(17,24,39,0.1)",
+                      background: isSelected
+                        ? "linear-gradient(135deg, #d9f99d 0%, #bbf7d0 100%)"
+                        : "white",
+                      opacity: isAdvancing && !isSelected ? 0.55 : 1,
+                    }}
+                  >
+                    <span style={quizOptionRowText}>{option.label}</span>
+                    <span
+                      style={{
+                        ...quizOptionRowCheck,
+                        opacity: isSelected ? 1 : 0,
+                      }}
+                    >
+                      ✓
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={quizPhaseFooter}>
+              {quizQuestionStep > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setQuizQuestionStep((q) => q - 1)}
+                  style={ghostButton}
+                >
+                  ← Back
+                </button>
+              ) : (
+                <div />
+              )}
+              <button
+                type="button"
+                onClick={() => setQuizPhase("interests")}
+                style={ghostButton}
+              >
+                Skip quiz
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div style={page}>
+      <section style={quizPhaseShell}>
+        <div style={{ ...quizPhaseCard, maxWidth: "580px" }}>
+          <div style={quizPhaseTop}>
+            <p style={eyebrow}>Personalize your JEAL experience</p>
+            <div style={statusPill}>{selectedIds.size} picked</div>
           </div>
 
-          <div style={optionsGrid}>
+          <div style={quizDots}>
+            {steps.map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  ...quizDot,
+                  width: i === currentStep ? 22 : 8,
+                  backgroundColor:
+                    i < currentStep
+                      ? "#113c2d"
+                      : i === currentStep
+                      ? "#84cc16"
+                      : "rgba(17,24,39,0.15)",
+                }}
+              />
+            ))}
+          </div>
+
+          <p style={quizStepLabel}>
+            Category {currentStep + 1} of {totalSteps}
+          </p>
+          <h2 style={quizQuestionHeading}>{currentCategory.name}</h2>
+          <p style={interestSubtitle}>
+            {currentCategory.description || "Select all that interest you."}
+          </p>
+
+          <div style={quizOptionsList}>
             {currentCategory.items.map((interest) => {
               const isSelected = selectedIds.has(interest.id);
               return (
@@ -434,31 +506,24 @@ export default function OnboardingQuiz() {
                   key={interest.id}
                   type="button"
                   onClick={() => handleToggleInterest(interest.id)}
-                  aria-label={`${isSelected ? "Deselect" : "Select"} interest ${interest.name}`}
+                  aria-label={`${isSelected ? "Deselect" : "Select"} ${interest.name}`}
                   aria-pressed={isSelected}
                   style={{
-                    ...optionCard,
-                    borderColor: isSelected ? "#113c2d" : "rgba(17, 24, 39, 0.12)",
+                    ...quizOptionRow,
+                    borderColor: isSelected ? "#113c2d" : "rgba(17,24,39,0.1)",
                     background: isSelected
                       ? "linear-gradient(135deg, #d9f99d 0%, #bbf7d0 100%)"
-                      : "rgba(255, 255, 255, 0.78)",
-                    boxShadow: isSelected
-                      ? "0 18px 40px rgba(17, 60, 45, 0.14)"
-                      : "0 10px 24px rgba(15, 23, 42, 0.05)",
+                      : "white",
                   }}
                 >
-                  <span style={optionTopRow}>
-                    <span style={optionTitle}>{interest.name}</span>
-                    <span
-                      style={{
-                        ...optionDot,
-                        backgroundColor: isSelected ? "#113c2d" : "transparent",
-                        borderColor: isSelected ? "#113c2d" : "rgba(17, 24, 39, 0.2)",
-                      }}
-                    />
-                  </span>
-                  <span style={optionDescription}>
-                    {interest.description || "Add this topic to shape your recommendations."}
+                  <span style={quizOptionRowText}>{interest.name}</span>
+                  <span
+                    style={{
+                      ...quizOptionRowCheck,
+                      opacity: isSelected ? 1 : 0,
+                    }}
+                  >
+                    ✓
                   </span>
                 </button>
               );
@@ -468,64 +533,43 @@ export default function OnboardingQuiz() {
           {saveError ? <Alert variant="error" className="mt-[length:var(--space-8)]">{saveError}</Alert> : null}
           {saveMessage ? <Alert variant="success" className="mt-[length:var(--space-8)]">{saveMessage}</Alert> : null}
 
-          <div style={footer}>
+          <div style={quizPhaseFooter}>
             <button
               type="button"
-              onClick={handleBack}
-              style={{
-                ...secondaryButton,
-                opacity: currentStep === 0 ? 0.5 : 1,
-                cursor: currentStep === 0 ? "default" : "pointer",
+              onClick={() => {
+                if (currentStep === 0) {
+                  setQuizQuestionStep(ONBOARDING_QUIZ_QUESTIONS.length - 1);
+                  setQuizPhase("quiz");
+                } else {
+                  handleBack();
+                }
               }}
-              disabled={currentStep === 0}
+              style={ghostButton}
             >
-              Back
+              ← Back
             </button>
 
-            <div style={footerActions}>
-              {!isAuthed ? (
-                <button
-                  type="button"
-                  onClick={handleSkipQuiz}
-                  style={ghostButton}
-                >
-                  Skip quiz
-                </button>
-              ) : null}
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
               {!isAuthed && isLastStep ? (
                 <>
                   <button
                     type="button"
-                    onClick={() =>
-                      navigate("/login", {
-                        state: { from: returnTo },
-                      })
-                    }
+                    onClick={() => navigate("/login", { state: { from: returnTo } })}
                     style={ghostButton}
                   >
                     Log in to save
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      navigate("/register", {
-                        state: { from: returnTo },
-                      })
-                    }
+                    onClick={() => navigate("/register", { state: { from: returnTo } })}
                     style={primaryButton}
                   >
                     Create account
                   </button>
                 </>
-              ) : null}
-
-              {!isLastStep ? (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  style={primaryButton}
-                >
-                  Next
+              ) : !isLastStep ? (
+                <button type="button" onClick={handleNext} style={primaryButton}>
+                  Next →
                 </button>
               ) : (
                 <button
@@ -553,40 +597,6 @@ const page = {
   minHeight: "100%",
 };
 
-const shell = {
-  width: "100%",
-  display: "flex",
-  justifyContent: "center",
-};
-
-const heroCard = {
-  width: "100%",
-  maxWidth: "1080px",
-  padding: "32px",
-  borderRadius: "32px",
-  border: "1px solid rgba(15, 23, 42, 0.08)",
-  background:
-    "radial-gradient(circle at top left, rgba(190, 242, 100, 0.34), transparent 32%), linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(244, 247, 241, 0.98) 100%)",
-  boxShadow: "0 30px 80px rgba(15, 23, 42, 0.09)",
-  backdropFilter: "blur(16px)",
-};
-
-const heroHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "16px",
-  marginBottom: "28px",
-  flexWrap: "wrap",
-};
-
-const headerActions = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
 
 const eyebrow = {
   margin: 0,
@@ -597,13 +607,6 @@ const eyebrow = {
   fontWeight: 700,
 };
 
-const title = {
-  margin: "10px 0 0 0",
-  fontSize: "clamp(2.25rem, 5vw, 4.5rem)",
-  lineHeight: 1,
-  color: "#111827",
-  maxWidth: "14ch",
-};
 
 const statusPill = {
   display: "inline-flex",
@@ -616,193 +619,112 @@ const statusPill = {
   fontSize: "14px",
 };
 
-const progressHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "16px",
-  alignItems: "flex-end",
-  marginBottom: "14px",
-  flexWrap: "wrap",
-};
 
-const progressLabel = {
-  margin: 0,
-  color: "#4b5563",
-  fontSize: "14px",
-  fontWeight: 600,
-};
-
-const stepTitle = {
-  margin: "4px 0 6px 0",
-  fontSize: "30px",
-  lineHeight: 1.1,
-  color: "#111827",
-};
-
-const stepDescription = {
-  margin: 0,
-  color: "#4b5563",
-  fontSize: "15px",
-  maxWidth: "56ch",
-};
-
-const progressMeta = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-end",
-  gap: "4px",
-};
-
-const progressPercent = {
-  fontSize: "28px",
-  lineHeight: 1,
-  fontWeight: 700,
-  color: "#111827",
-};
-
-const progressHint = {
-  fontSize: "13px",
-  color: "#4b5563",
-};
-
-const progressTrack = {
+const quizPhaseShell = {
   width: "100%",
-  height: "12px",
-  borderRadius: "999px",
-  background: "rgba(17, 24, 39, 0.08)",
-  overflow: "hidden",
-  marginBottom: "26px",
+  display: "flex",
+  justifyContent: "center",
+  paddingTop: "48px",
+  paddingBottom: "48px",
 };
 
-const quizQuestionSection = {
-  marginBottom: "20px",
-  padding: "16px",
-  borderRadius: "18px",
-  border: "1px solid rgba(17, 24, 39, 0.1)",
-  background: "rgba(255, 255, 255, 0.75)",
+const quizPhaseCard = {
+  width: "100%",
+  maxWidth: "520px",
+  padding: "32px 28px 28px",
+  borderRadius: "28px",
+  border: "1px solid rgba(15,23,42,0.08)",
+  background:
+    "radial-gradient(circle at top left, rgba(190,242,100,0.22), transparent 40%), linear-gradient(180deg, #ffffff 0%, #f7faf3 100%)",
+  boxShadow: "0 24px 60px rgba(15,23,42,0.1)",
 };
 
-const quizQuestionHeader = {
+const quizPhaseTop = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "10px",
   alignItems: "center",
-  flexWrap: "wrap",
-  marginBottom: "12px",
+  marginBottom: "28px",
 };
 
-const quizQuestionTitle = {
-  margin: 0,
-  fontWeight: 700,
-  color: "#111827",
-  fontSize: "14px",
+const quizDots = {
+  display: "flex",
+  gap: "5px",
+  alignItems: "center",
+  marginBottom: "22px",
 };
 
-const quizQuestionGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "10px",
+const quizDot = {
+  height: "8px",
+  borderRadius: "999px",
+  transition: "width 0.25s ease, background-color 0.25s ease",
 };
 
-const quizQuestionCard = {
-  border: "1px solid rgba(17, 24, 39, 0.08)",
-  borderRadius: "14px",
-  padding: "10px",
-  background: "white",
-};
-
-const quizPrompt = {
-  margin: "0 0 8px 0",
+const quizStepLabel = {
+  margin: "0 0 6px 0",
   fontSize: "13px",
   fontWeight: 600,
-  color: "#1f2937",
+  color: "#6b7280",
+  letterSpacing: "0.04em",
 };
 
-const quizOptionList = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
+const interestSubtitle = {
+  margin: "0 0 20px 0",
+  fontSize: "14px",
+  fontWeight: 400,
+  color: "#6b7280",
 };
 
-const quizOptionButton = {
-  border: "1px solid rgba(17, 24, 39, 0.12)",
-  borderRadius: "999px",
-  background: "white",
-  color: "#111827",
-  fontSize: "12px",
-  fontWeight: 600,
-  padding: "8px 10px",
-  textAlign: "left",
-};
-
-const progressFill = {
-  height: "100%",
-  borderRadius: "999px",
-  background: "linear-gradient(90deg, #84cc16 0%, #0f766e 100%)",
-  transition: "width 0.2s ease",
-};
-
-const optionsGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "16px",
-};
-
-const optionCard = {
-  border: "1px solid rgba(17, 24, 39, 0.12)",
-  borderRadius: "24px",
-  padding: "18px",
-  textAlign: "left",
-  minHeight: "148px",
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  transition:
-    "transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
-};
-
-const optionTopRow = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "12px",
-};
-
-const optionTitle = {
-  fontSize: "18px",
+const quizQuestionHeading = {
+  margin: "0 0 26px 0",
+  fontSize: "clamp(1.35rem, 4vw, 1.9rem)",
+  lineHeight: 1.25,
   fontWeight: 700,
   color: "#111827",
 };
 
-const optionDescription = {
-  fontSize: "14px",
-  color: "#374151",
-  marginTop: "18px",
+const quizOptionsList = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+  marginBottom: "28px",
 };
 
-const optionDot = {
-  width: "20px",
-  height: "20px",
-  borderRadius: "999px",
-  border: "2px solid rgba(17, 24, 39, 0.2)",
+const quizOptionRow = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  width: "100%",
+  padding: "14px 18px",
+  border: "1.5px solid rgba(17,24,39,0.1)",
+  borderRadius: "14px",
+  background: "white",
+  textAlign: "left",
+  cursor: "pointer",
+  transition: "border-color 0.15s ease, background 0.15s ease",
+};
+
+const quizOptionRowText = {
+  fontSize: "15px",
+  fontWeight: 500,
+  color: "#111827",
+};
+
+const quizOptionRowCheck = {
+  fontSize: "15px",
+  fontWeight: 700,
+  color: "#166534",
+  transition: "opacity 0.15s ease",
   flexShrink: 0,
+  marginLeft: "10px",
 };
 
-const footer = {
-  marginTop: "28px",
+const quizPhaseFooter = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "wrap",
   alignItems: "center",
+  gap: "10px",
 };
 
-const footerActions = {
-  display: "flex",
-  gap: "12px",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
 
 const primaryButton = {
   border: "none",
@@ -814,15 +736,6 @@ const primaryButton = {
   padding: "12px 20px",
 };
 
-const secondaryButton = {
-  border: "1px solid rgba(17, 24, 39, 0.12)",
-  borderRadius: "999px",
-  background: "rgba(255, 255, 255, 0.72)",
-  color: "#111827",
-  fontWeight: 600,
-  fontSize: "14px",
-  padding: "12px 20px",
-};
 
 const ghostButton = {
   border: "1px solid rgba(17, 24, 39, 0.12)",
