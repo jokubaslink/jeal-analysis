@@ -13,7 +13,7 @@ import {
 import {
   ONBOARDING_QUIZ_QUESTIONS,
   hydrateQuizAnswersFromStorage,
-  scoreQuizAnswers,
+  computeBoostedCategoryScores,
   suggestInterestIdsFromCategoryScores,
 } from "../onboarding/quizEngine.js";
 import { Alert, EmptyState, Skeleton } from "../components/ui/index.js";
@@ -161,7 +161,7 @@ export default function OnboardingQuiz() {
   const hasAnySelection = selectedIds.size > 0;
   const answeredOptionIds = Object.values(quizAnswersByQuestionId);
   const quizCategoryScores = useMemo(
-    () => scoreQuizAnswers(answeredOptionIds),
+    () => computeBoostedCategoryScores(answeredOptionIds),
     [answeredOptionIds]
   );
   const suggestedInterestIds = useMemo(
