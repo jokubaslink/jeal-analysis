@@ -35,6 +35,13 @@ export default function EventDetail() {
   const [isLoadingRegistration, setIsLoadingRegistration] = useState(true);
   const [isSavingRegistration, setIsSavingRegistration] = useState(false);
   const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
+  const [existingFeedback, setExistingFeedback] = useState(null);
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(true);
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+  const [feedbackErrorMessage, setFeedbackErrorMessage] = useState("");
+  const [feedbackSuccessMessage, setFeedbackSuccessMessage] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState("");
 
   useEffect(() => {
     if (!eventId) return undefined;
@@ -94,6 +101,40 @@ export default function EventDetail() {
     };
 
     loadRegistrationState();
+    return () => {
+      ignore = true;
+    };
+  }, [eventId, userId]);
+
+  useEffect(() => {
+    if (!userId || !eventId) {
+      setExistingFeedback(null);
+      setIsLoadingFeedback(false);
+      setFeedbackErrorMessage("");
+      setFeedbackSuccessMessage("");
+      return undefined;
+    }
+
+    let ignore = false;
+
+    const loadFeedback = async () => {
+      setIsLoadingFeedback(true);
+      setFeedbackErrorMessage("");
+      try {
+        const response = await apiFetch(`/events/${eventId}/feedback`);
+        if (!ignore) {
+          setExistingFeedback(response || null);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setFeedbackErrorMessage(error.message || "Could not load your feedback.");
+        }
+      } finally {
+        if (!ignore) setIsLoadingFeedback(false);
+      }
+    };
+
+    loadFeedback();
     return () => {
       ignore = true;
     };
@@ -170,6 +211,39 @@ export default function EventDetail() {
     }
   };
 
+  const handleSubmitFeedback = async (submitEvent) => {
+    submitEvent.preventDefault();
+    if (!eventId) return;
+
+    if (feedbackRating < 1 || feedbackRating > 5) {
+      setFeedbackErrorMessage("Choose a rating before submitting feedback.");
+      setFeedbackSuccessMessage("");
+      return;
+    }
+
+    setIsSavingFeedback(true);
+    setFeedbackErrorMessage("");
+    setFeedbackSuccessMessage("");
+
+    try {
+      const response = await apiFetch(`/events/${eventId}/feedback`, {
+        method: "POST",
+        body: JSON.stringify({
+          rating: feedbackRating,
+          comment: feedbackComment || null,
+        }),
+      });
+      setExistingFeedback(response);
+      setFeedbackComment("");
+      setFeedbackRating(0);
+      setFeedbackSuccessMessage("Thanks for sharing your experience.");
+    } catch (error) {
+      setFeedbackErrorMessage(error.message || "Could not submit your feedback.");
+    } finally {
+      setIsSavingFeedback(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div style={page}>
@@ -196,6 +270,7 @@ export default function EventDetail() {
   }
 
   const past = isEventPast(event);
+  const canLeaveFeedback = past && isRegistered;
 
   return (
     <div style={page}>
@@ -290,6 +365,70 @@ export default function EventDetail() {
         <p style={description}>
           {event.description || "No description provided yet."}
         </p>
+      </section>
+
+      <section style={panel}>
+        <h2 style={sectionTitle}>Your feedback</h2>
+        {feedbackErrorMessage ? <Alert variant="error">{feedbackErrorMessage}</Alert> : null}
+        {feedbackSuccessMessage ? <Alert variant="success">{feedbackSuccessMessage}</Alert> : null}
+        {!canLeaveFeedback ? (
+          <p style={description}>
+            Feedback becomes available after the event ends for attendees only.
+          </p>
+        ) : isLoadingFeedback ? (
+          <p style={helperText}>Loading your feedback status…</p>
+        ) : existingFeedback ? (
+          <div style={feedbackSummary}>
+            <p style={feedbackRatingLine}>
+              {"★".repeat(existingFeedback.rating)}
+              {"☆".repeat(Math.max(0, 5 - existingFeedback.rating))}
+            </p>
+            <p style={feedbackMeta}>
+              Submitted {formatDate(existingFeedback.submitted_at)}
+            </p>
+            <p style={description}>
+              {existingFeedback.comment ||
+                "You submitted a rating without an additional comment."}
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmitFeedback} style={feedbackForm}>
+            <div style={feedbackField}>
+              <span style={feedbackLabel}>Rating</span>
+              <div style={ratingRow}>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFeedbackRating(value)}
+                    style={{
+                      ...ratingButton,
+                      ...(feedbackRating === value ? ratingButtonActive : null),
+                    }}
+                  >
+                    {value}★
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label style={feedbackField}>
+              <span style={feedbackLabel}>Comment</span>
+              <textarea
+                value={feedbackComment}
+                onChange={(changeEvent) => setFeedbackComment(changeEvent.target.value)}
+                rows={4}
+                maxLength={1000}
+                placeholder="Optional: what went well, or what could be improved?"
+                style={feedbackTextarea}
+              />
+            </label>
+
+            <Button type="submit" disabled={isSavingFeedback}>
+              {isSavingFeedback ? "Submitting..." : "Submit feedback"}
+            </Button>
+          </form>
+        )}
       </section>
     </div>
   );
@@ -444,6 +583,81 @@ const helperText = {
   color: "#6b7280",
   fontSize: "13px",
   lineHeight: 1.5,
+};
+
+const feedbackForm = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+};
+
+const feedbackField = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+const feedbackLabel = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const ratingRow = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const ratingButton = {
+  padding: "10px 14px",
+  borderRadius: "999px",
+  border: "1px solid rgba(99, 102, 241, 0.18)",
+  background: "#ffffff",
+  color: "#334155",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: "13px",
+};
+
+const ratingButtonActive = {
+  background: "#111827",
+  color: "#ffffff",
+  borderColor: "#111827",
+};
+
+const feedbackTextarea = {
+  width: "100%",
+  borderRadius: "16px",
+  border: "1px solid rgba(148, 163, 184, 0.4)",
+  padding: "12px 14px",
+  fontSize: "14px",
+  lineHeight: 1.5,
+  color: "#111827",
+  resize: "vertical",
+  boxSizing: "border-box",
+  background: "#ffffff",
+};
+
+const feedbackSummary = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+const feedbackRatingLine = {
+  margin: 0,
+  color: "#f59e0b",
+  fontSize: "18px",
+  fontWeight: 800,
+  letterSpacing: "0.04em",
+};
+
+const feedbackMeta = {
+  margin: 0,
+  color: "#64748b",
+  fontSize: "13px",
 };
 
 const panel = {

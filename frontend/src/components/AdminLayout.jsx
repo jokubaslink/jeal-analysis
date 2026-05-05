@@ -29,6 +29,9 @@ export default function AdminLayout() {
           <NavLink to="/admin/events" className={navClass}>
             Events
           </NavLink>
+          <NavLink to="/admin/feedback" className={navClass}>
+            Feedback
+          </NavLink>
         </nav>
         <button
           type="button"

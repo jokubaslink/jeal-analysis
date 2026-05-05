@@ -63,6 +63,9 @@ export default function AdminHome() {
         <Link to="/admin/events/new" style={linkButton}>
           Create event
         </Link>
+        <Link to="/admin/feedback" style={linkButton}>
+          Review feedback
+        </Link>
       </div>
     </div>
   );

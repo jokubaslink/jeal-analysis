@@ -10,6 +10,20 @@ import {
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
+function formatDate(value) {
+  if (!value) return "Date to be announced";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Date to be announced";
+  return parsed.toLocaleString([], {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function ClubDetail() {
   const { clubId } = useParams();
   const navigate = useNavigate();
@@ -22,6 +36,17 @@ export default function ClubDetail() {
   const [isLoadingMembership, setIsLoadingMembership] = useState(true);
   const [isSavingMembership, setIsSavingMembership] = useState(false);
   const [membershipErrorMessage, setMembershipErrorMessage] = useState("");
+  const [feedbackContext, setFeedbackContext] = useState({
+    opportunities: [],
+    submitted_feedback: [],
+  });
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(true);
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+  const [feedbackErrorMessage, setFeedbackErrorMessage] = useState("");
+  const [feedbackSuccessMessage, setFeedbackSuccessMessage] = useState("");
+  const [selectedOccurrence, setSelectedOccurrence] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState("");
 
   useEffect(() => {
     if (!clubId) return undefined;
@@ -94,6 +119,51 @@ export default function ClubDetail() {
       ignore = true;
     };
   }, [clubId, userId]);
+
+  useEffect(() => {
+    if (!clubId || !isMember) {
+      setFeedbackContext({ opportunities: [], submitted_feedback: [] });
+      setSelectedOccurrence("");
+      setFeedbackErrorMessage("");
+      setFeedbackSuccessMessage("");
+      setIsLoadingFeedback(false);
+      return undefined;
+    }
+
+    let ignore = false;
+
+    const loadFeedbackContext = async () => {
+      setIsLoadingFeedback(true);
+      setFeedbackErrorMessage("");
+      try {
+        const response = await apiFetch(`/clubs/${clubId}/feedback-context`);
+        if (ignore) return;
+
+        const nextContext = {
+          opportunities: Array.isArray(response?.opportunities) ? response.opportunities : [],
+          submitted_feedback: Array.isArray(response?.submitted_feedback)
+            ? response.submitted_feedback
+            : [],
+        };
+        setFeedbackContext(nextContext);
+        const firstAvailable = nextContext.opportunities.find(
+          (item) => !item.already_submitted
+        );
+        setSelectedOccurrence(firstAvailable?.activity_start_time || "");
+      } catch (error) {
+        if (!ignore) {
+          setFeedbackErrorMessage(error.message || "Could not load club feedback.");
+        }
+      } finally {
+        if (!ignore) setIsLoadingFeedback(false);
+      }
+    };
+
+    loadFeedbackContext();
+    return () => {
+      ignore = true;
+    };
+  }, [clubId, isMember]);
 
   useEffect(() => {
     if (!clubId) return undefined;
@@ -177,6 +247,57 @@ export default function ClubDetail() {
     past.sort((a, b) => byStart(b, a));
     return { upcomingEvents: upcoming, pastEvents: past };
   }, [events]);
+
+  const handleSubmitFeedback = async (submitEvent) => {
+    submitEvent.preventDefault();
+    if (!clubId) return;
+
+    if (!selectedOccurrence) {
+      setFeedbackErrorMessage("Choose a club activity before submitting feedback.");
+      setFeedbackSuccessMessage("");
+      return;
+    }
+    if (feedbackRating < 1 || feedbackRating > 5) {
+      setFeedbackErrorMessage("Choose a rating before submitting feedback.");
+      setFeedbackSuccessMessage("");
+      return;
+    }
+
+    setIsSavingFeedback(true);
+    setFeedbackErrorMessage("");
+    setFeedbackSuccessMessage("");
+
+    try {
+      const created = await apiFetch(`/clubs/${clubId}/feedback`, {
+        method: "POST",
+        body: JSON.stringify({
+          activity_start_time: selectedOccurrence,
+          rating: feedbackRating,
+          comment: feedbackComment || null,
+        }),
+      });
+
+      const nextOpportunities = feedbackContext.opportunities.map((item) =>
+        item.activity_start_time === selectedOccurrence
+          ? { ...item, already_submitted: true }
+          : item
+      );
+      const nextOpportunity = nextOpportunities.find((item) => !item.already_submitted);
+
+      setFeedbackContext((prev) => ({
+        opportunities: nextOpportunities,
+        submitted_feedback: [created, ...prev.submitted_feedback],
+      }));
+      setSelectedOccurrence(nextOpportunity?.activity_start_time || "");
+      setFeedbackRating(0);
+      setFeedbackComment("");
+      setFeedbackSuccessMessage("Thanks for sharing your club experience.");
+    } catch (error) {
+      setFeedbackErrorMessage(error.message || "Could not submit your feedback.");
+    } finally {
+      setIsSavingFeedback(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -268,6 +389,112 @@ export default function ClubDetail() {
         <p style={description}>
           {club.description || "No description provided yet."}
         </p>
+      </section>
+
+      <section style={panel}>
+        <h2 style={sectionTitle}>Club activity feedback</h2>
+        {feedbackErrorMessage ? <Alert variant="error">{feedbackErrorMessage}</Alert> : null}
+        {feedbackSuccessMessage ? <Alert variant="success">{feedbackSuccessMessage}</Alert> : null}
+        {!isMember ? (
+          <p style={description}>
+            Join the club first, then you can leave feedback after attending a scheduled activity.
+          </p>
+        ) : isLoadingFeedback ? (
+          <p style={membershipHint}>Loading recent club activities…</p>
+        ) : (
+          <div style={feedbackBlock}>
+            {feedbackContext.opportunities.some((item) => !item.already_submitted) ? (
+              <form onSubmit={handleSubmitFeedback} style={feedbackForm}>
+                <label style={feedbackField}>
+                  <span style={feedbackLabel}>Club activity</span>
+                  <select
+                    value={selectedOccurrence}
+                    onChange={(changeEvent) => setSelectedOccurrence(changeEvent.target.value)}
+                    style={feedbackSelect}
+                  >
+                    <option value="">Choose an activity</option>
+                    {feedbackContext.opportunities
+                      .filter((item) => !item.already_submitted)
+                      .map((item) => (
+                        <option
+                          key={item.activity_start_time}
+                          value={item.activity_start_time}
+                        >
+                          {formatDate(item.activity_start_time)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+
+                <div style={feedbackField}>
+                  <span style={feedbackLabel}>Rating</span>
+                  <div style={ratingRow}>
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFeedbackRating(value)}
+                        style={{
+                          ...ratingButton,
+                          ...(feedbackRating === value ? ratingButtonActive : null),
+                        }}
+                      >
+                        {value}★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label style={feedbackField}>
+                  <span style={feedbackLabel}>Comment</span>
+                  <textarea
+                    value={feedbackComment}
+                    onChange={(changeEvent) => setFeedbackComment(changeEvent.target.value)}
+                    rows={4}
+                    maxLength={1000}
+                    placeholder="Optional: tell the club what worked well or what to improve."
+                    style={feedbackTextarea}
+                  />
+                </label>
+
+                <Button type="submit" disabled={isSavingFeedback}>
+                  {isSavingFeedback ? "Submitting..." : "Submit feedback"}
+                </Button>
+              </form>
+            ) : (
+              <p style={description}>
+                {feedbackContext.submitted_feedback.length > 0
+                  ? "You have already submitted feedback for the recent eligible club activities."
+                  : "No past club activities are eligible for feedback yet."}
+              </p>
+            )}
+
+            {feedbackContext.submitted_feedback.length > 0 ? (
+              <div style={feedbackHistory}>
+                <h3 style={feedbackHistoryTitle}>Submitted feedback</h3>
+                <div style={feedbackHistoryList}>
+                  {feedbackContext.submitted_feedback.map((entry) => (
+                    <article
+                      key={`${entry.club_id}-${entry.activity_start_time}`}
+                      style={feedbackHistoryCard}
+                    >
+                      <p style={feedbackHistoryDate}>
+                        {formatDate(entry.activity_start_time)}
+                      </p>
+                      <p style={feedbackHistoryRating}>
+                        {"★".repeat(entry.rating)}
+                        {"☆".repeat(Math.max(0, 5 - entry.rating))}
+                      </p>
+                      <p style={feedbackHistoryComment}>
+                        {entry.comment || "No comment left."}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
       </section>
 
       <section style={panel}>
@@ -441,6 +668,126 @@ const description = {
   lineHeight: 1.6,
   color: "#374151",
   whiteSpace: "pre-wrap",
+};
+
+const feedbackBlock = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "18px",
+};
+
+const feedbackForm = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+};
+
+const feedbackField = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+const feedbackLabel = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const feedbackSelect = {
+  width: "100%",
+  borderRadius: "14px",
+  border: "1px solid rgba(148, 163, 184, 0.4)",
+  padding: "10px 12px",
+  fontSize: "14px",
+  color: "#111827",
+  background: "#ffffff",
+  boxSizing: "border-box",
+};
+
+const ratingRow = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const ratingButton = {
+  padding: "10px 14px",
+  borderRadius: "999px",
+  border: "1px solid rgba(99, 102, 241, 0.18)",
+  background: "#ffffff",
+  color: "#334155",
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: "13px",
+};
+
+const ratingButtonActive = {
+  background: "#111827",
+  color: "#ffffff",
+  borderColor: "#111827",
+};
+
+const feedbackTextarea = {
+  width: "100%",
+  borderRadius: "16px",
+  border: "1px solid rgba(148, 163, 184, 0.4)",
+  padding: "12px 14px",
+  fontSize: "14px",
+  lineHeight: 1.5,
+  color: "#111827",
+  resize: "vertical",
+  boxSizing: "border-box",
+  background: "#ffffff",
+};
+
+const feedbackHistory = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+};
+
+const feedbackHistoryTitle = {
+  margin: 0,
+  fontSize: "16px",
+  fontWeight: 700,
+  color: "#111827",
+};
+
+const feedbackHistoryList = {
+  display: "grid",
+  gap: "10px",
+};
+
+const feedbackHistoryCard = {
+  padding: "14px",
+  borderRadius: "16px",
+  background: "#f8fafc",
+  border: "1px solid rgba(148, 163, 184, 0.18)",
+};
+
+const feedbackHistoryDate = {
+  margin: 0,
+  color: "#0f766e",
+  fontSize: "12px",
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const feedbackHistoryRating = {
+  margin: "8px 0 0 0",
+  color: "#f59e0b",
+  fontSize: "16px",
+  fontWeight: 800,
+};
+
+const feedbackHistoryComment = {
+  margin: "8px 0 0 0",
+  color: "#475569",
+  fontSize: "14px",
+  lineHeight: 1.5,
 };
 
 const emptyText = {

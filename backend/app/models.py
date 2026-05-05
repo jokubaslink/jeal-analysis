@@ -38,8 +38,18 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    event_feedback_entries = relationship(
+        "EventFeedback",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     club_memberships = relationship(
         "UserClubMembership",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    club_activity_feedback_entries = relationship(
+        "ClubActivityFeedback",
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -153,6 +163,11 @@ class Club(Base):
         back_populates="club",
         cascade="all, delete-orphan",
     )
+    activity_feedback_entries = relationship(
+        "ClubActivityFeedback",
+        back_populates="club",
+        cascade="all, delete-orphan",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -199,6 +214,11 @@ class Event(Base):
         back_populates="event",
         cascade="all, delete-orphan",
     )
+    feedback_entries = relationship(
+        "EventFeedback",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -242,4 +262,53 @@ class UserClubMembership(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+
+class EventFeedback(Base):
+    __tablename__ = "event_feedback"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    rating = Column(Integer, nullable=False)
+    comment = Column(String(1000), nullable=True)
+
+    user = relationship("User", back_populates="event_feedback_entries")
+    event = relationship("Event", back_populates="feedback_entries")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ClubActivityFeedback(Base):
+    __tablename__ = "club_activity_feedback"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id", ondelete="CASCADE"), primary_key=True)
+    activity_start_time = Column(DateTime(timezone=True), primary_key=True)
+    rating = Column(Integer, nullable=False)
+    comment = Column(String(1000), nullable=True)
+
+    user = relationship("User", back_populates="club_activity_feedback_entries")
+    club = relationship("Club", back_populates="activity_feedback_entries")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )

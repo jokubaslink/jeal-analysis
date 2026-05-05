@@ -1,7 +1,7 @@
 import hashlib
 import os
 import uuid
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -311,6 +311,59 @@ class RecommendedClubOut(BaseModel):
     score: int
 
 
+class FeedbackInput(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: str | None = Field(None, max_length=1000)
+
+    @field_validator("comment")
+    @classmethod
+    def normalize_comment(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
+
+class EventFeedbackOut(BaseModel):
+    event_id: str
+    event_title: str
+    rating: int
+    comment: str | None = None
+    submitted_at: str
+
+
+class ClubFeedbackOpportunityOut(BaseModel):
+    activity_start_time: str
+    activity_end_time: str | None = None
+    already_submitted: bool
+
+
+class ClubActivityFeedbackCreate(FeedbackInput):
+    activity_start_time: datetime
+
+    @field_validator("activity_start_time")
+    @classmethod
+    def activity_start_time_utc_if_naive(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
+
+
+class ClubActivityFeedbackOut(BaseModel):
+    club_id: str
+    club_name: str
+    activity_start_time: str
+    activity_end_time: str | None = None
+    rating: int
+    comment: str | None = None
+    submitted_at: str
+
+
+class ClubFeedbackContextOut(BaseModel):
+    opportunities: list[ClubFeedbackOpportunityOut]
+    submitted_feedback: list[ClubActivityFeedbackOut]
+
+
 class EventCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
@@ -503,6 +556,36 @@ class RecommendedEventOut(BaseModel):
     score: int
 
 
+class AdminEventFeedbackOut(BaseModel):
+    user_id: str
+    user_email: str
+    user_name: str | None = None
+    event_id: str
+    event_title: str
+    event_start_time: str
+    rating: int
+    comment: str | None = None
+    submitted_at: str
+
+
+class AdminClubActivityFeedbackOut(BaseModel):
+    user_id: str
+    user_email: str
+    user_name: str | None = None
+    club_id: str
+    club_name: str
+    activity_start_time: str
+    activity_end_time: str | None = None
+    rating: int
+    comment: str | None = None
+    submitted_at: str
+
+
+class AdminFeedbackSummaryOut(BaseModel):
+    event_feedback: list[AdminEventFeedbackOut]
+    club_activity_feedback: list[AdminClubActivityFeedbackOut]
+
+
 class RecommendationsOut(BaseModel):
     clubs: list["RecommendedClubOut"]
     events: list[RecommendedEventOut]
@@ -637,6 +720,129 @@ def _serialize_joined_club(membership: models.UserClubMembership) -> JoinedClubO
         **_serialize_club(membership.club).model_dump(),
         joined_at=membership.created_at.isoformat(),
     )
+
+
+def _display_user_name(user: models.User) -> str | None:
+    if user.name and user.name.strip():
+        return user.name.strip()
+    parts = [p.strip() for p in [user.first_name or "", user.last_name or ""] if p.strip()]
+    if parts:
+        return " ".join(parts)
+    return None
+
+
+def _event_feedback_cutoff(event: models.Event) -> datetime:
+    cutoff = event.end_time or event.start_time
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=timezone.utc)
+    return cutoff
+
+
+def _is_event_feedback_open(event: models.Event) -> bool:
+    return _event_feedback_cutoff(event) <= datetime.now(timezone.utc)
+
+
+def _club_activity_end_time(
+    club: models.Club,
+    activity_start_time: datetime,
+) -> datetime | None:
+    if not club.meeting_end_time:
+        return None
+    return datetime.combine(
+        activity_start_time.date(),
+        club.meeting_end_time,
+        tzinfo=timezone.utc,
+    )
+
+
+def _serialize_event_feedback(feedback: models.EventFeedback) -> EventFeedbackOut:
+    return EventFeedbackOut(
+        event_id=str(feedback.event.id),
+        event_title=feedback.event.title,
+        rating=feedback.rating,
+        comment=feedback.comment,
+        submitted_at=feedback.created_at.isoformat(),
+    )
+
+
+def _serialize_club_activity_feedback(
+    feedback: models.ClubActivityFeedback,
+) -> ClubActivityFeedbackOut:
+    activity_end_time = _club_activity_end_time(feedback.club, feedback.activity_start_time)
+    return ClubActivityFeedbackOut(
+        club_id=str(feedback.club.id),
+        club_name=feedback.club.name,
+        activity_start_time=feedback.activity_start_time.isoformat(),
+        activity_end_time=activity_end_time.isoformat() if activity_end_time else None,
+        rating=feedback.rating,
+        comment=feedback.comment,
+        submitted_at=feedback.created_at.isoformat(),
+    )
+
+
+def _build_recent_club_feedback_opportunities(
+    membership: models.UserClubMembership,
+    submitted_start_times: set[datetime],
+    *,
+    limit: int = 6,
+) -> list[ClubFeedbackOpportunityOut]:
+    club = membership.club
+    if club.meeting_weekday is None or club.meeting_start_time is None:
+        return []
+
+    now = datetime.now(timezone.utc)
+    joined_at = membership.created_at
+    if joined_at.tzinfo is None:
+        joined_at = joined_at.replace(tzinfo=timezone.utc)
+
+    candidate_date = now.date() - timedelta(days=(now.date().weekday() - club.meeting_weekday) % 7)
+    opportunities: list[ClubFeedbackOpportunityOut] = []
+
+    while len(opportunities) < limit:
+        activity_start = datetime.combine(
+            candidate_date,
+            club.meeting_start_time,
+            tzinfo=timezone.utc,
+        )
+        if activity_start < joined_at:
+            break
+        if activity_start <= now:
+            activity_end = _club_activity_end_time(club, activity_start)
+            opportunities.append(
+                ClubFeedbackOpportunityOut(
+                    activity_start_time=activity_start.isoformat(),
+                    activity_end_time=activity_end.isoformat() if activity_end else None,
+                    already_submitted=activity_start in submitted_start_times,
+                )
+            )
+        candidate_date -= timedelta(days=7)
+
+    return opportunities
+
+
+def _is_valid_club_feedback_occurrence(
+    membership: models.UserClubMembership,
+    activity_start_time: datetime,
+) -> bool:
+    club = membership.club
+    if club.meeting_weekday is None or club.meeting_start_time is None:
+        return False
+
+    joined_at = membership.created_at
+    if joined_at.tzinfo is None:
+        joined_at = joined_at.replace(tzinfo=timezone.utc)
+    if activity_start_time.tzinfo is None:
+        activity_start_time = activity_start_time.replace(tzinfo=timezone.utc)
+
+    if activity_start_time > datetime.now(timezone.utc):
+        return False
+    if activity_start_time < joined_at:
+        return False
+    if activity_start_time.weekday() != club.meeting_weekday:
+        return False
+    if activity_start_time.time().replace(tzinfo=None) != club.meeting_start_time:
+        return False
+    return True
 
 
 def _get_club_or_404(
@@ -1313,17 +1519,9 @@ def get_similar_users_for_current_user(
     scored.sort(key=lambda x: x[0], reverse=True)
     top = scored[:limit_value]
 
-    def _display_name(user: models.User) -> str | None:
-        if user.name and user.name.strip():
-            return user.name.strip()
-        parts = [p.strip() for p in [user.first_name or "", user.last_name or ""] if p.strip()]
-        if parts:
-            return " ".join(parts)
-        return None
-
     return [
         SimilarUserPublicOut(
-            name=_display_name(u),
+            name=_display_user_name(u),
             programme=u.programme,
             faculty=u.faculty,
         )
@@ -1838,6 +2036,81 @@ def unregister_for_event(
     return
 
 
+@app.get("/events/{event_id}/feedback", response_model=EventFeedbackOut | None)
+def get_event_feedback(
+    event_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    feedback = (
+        db.query(models.EventFeedback)
+        .options(joinedload(models.EventFeedback.event))
+        .filter(models.EventFeedback.user_id == current_user.id)
+        .filter(models.EventFeedback.event_id == event.id)
+        .first()
+    )
+    return _serialize_event_feedback(feedback) if feedback else None
+
+
+@app.post("/events/{event_id}/feedback", response_model=EventFeedbackOut, status_code=status.HTTP_201_CREATED)
+def create_event_feedback(
+    event_id: str,
+    payload: FeedbackInput,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+
+    registration = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.user_id == current_user.id)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .first()
+    )
+    if not registration:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only leave feedback for events you attended.",
+        )
+    if not _is_event_feedback_open(event):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Feedback opens after the event has ended.",
+        )
+
+    existing = (
+        db.query(models.EventFeedback)
+        .filter(models.EventFeedback.user_id == current_user.id)
+        .filter(models.EventFeedback.event_id == event.id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Feedback has already been submitted for this event.",
+        )
+
+    db.add(
+        models.EventFeedback(
+            user_id=current_user.id,
+            event_id=event.id,
+            rating=payload.rating,
+            comment=payload.comment,
+        )
+    )
+    db.commit()
+
+    feedback = (
+        db.query(models.EventFeedback)
+        .options(joinedload(models.EventFeedback.event))
+        .filter(models.EventFeedback.user_id == current_user.id)
+        .filter(models.EventFeedback.event_id == event.id)
+        .first()
+    )
+    return _serialize_event_feedback(feedback)
+
+
 @app.get("/users/{user_id}/joined-clubs", response_model=list[JoinedClubOut])
 def list_joined_clubs(
     user_id: str,
@@ -1925,6 +2198,108 @@ def leave_club(
         db.delete(row)
         db.commit()
     return
+
+
+@app.get("/clubs/{club_id}/feedback-context", response_model=ClubFeedbackContextOut)
+def get_club_feedback_context(
+    club_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    membership = (
+        db.query(models.UserClubMembership)
+        .options(joinedload(models.UserClubMembership.club))
+        .filter(models.UserClubMembership.user_id == current_user.id)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only leave feedback for clubs you joined.",
+        )
+
+    submitted_feedback = (
+        db.query(models.ClubActivityFeedback)
+        .options(joinedload(models.ClubActivityFeedback.club))
+        .filter(models.ClubActivityFeedback.user_id == current_user.id)
+        .filter(models.ClubActivityFeedback.club_id == club.id)
+        .order_by(models.ClubActivityFeedback.activity_start_time.desc())
+        .all()
+    )
+    submitted_start_times = {row.activity_start_time for row in submitted_feedback}
+
+    return ClubFeedbackContextOut(
+        opportunities=_build_recent_club_feedback_opportunities(
+            membership,
+            submitted_start_times,
+        ),
+        submitted_feedback=[
+            _serialize_club_activity_feedback(row) for row in submitted_feedback
+        ],
+    )
+
+
+@app.post("/clubs/{club_id}/feedback", response_model=ClubActivityFeedbackOut, status_code=status.HTTP_201_CREATED)
+def create_club_activity_feedback(
+    club_id: str,
+    payload: ClubActivityFeedbackCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    membership = (
+        db.query(models.UserClubMembership)
+        .options(joinedload(models.UserClubMembership.club))
+        .filter(models.UserClubMembership.user_id == current_user.id)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only leave feedback for clubs you joined.",
+        )
+    if not _is_valid_club_feedback_occurrence(membership, payload.activity_start_time):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Feedback can only be submitted for a past club activity you attended.",
+        )
+
+    existing = (
+        db.query(models.ClubActivityFeedback)
+        .filter(models.ClubActivityFeedback.user_id == current_user.id)
+        .filter(models.ClubActivityFeedback.club_id == club.id)
+        .filter(models.ClubActivityFeedback.activity_start_time == payload.activity_start_time)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Feedback has already been submitted for this club activity.",
+        )
+
+    db.add(
+        models.ClubActivityFeedback(
+            user_id=current_user.id,
+            club_id=club.id,
+            activity_start_time=payload.activity_start_time,
+            rating=payload.rating,
+            comment=payload.comment,
+        )
+    )
+    db.commit()
+
+    feedback = (
+        db.query(models.ClubActivityFeedback)
+        .options(joinedload(models.ClubActivityFeedback.club))
+        .filter(models.ClubActivityFeedback.user_id == current_user.id)
+        .filter(models.ClubActivityFeedback.club_id == club.id)
+        .filter(models.ClubActivityFeedback.activity_start_time == payload.activity_start_time)
+        .first()
+    )
+    return _serialize_club_activity_feedback(feedback)
 
 
 @app.get("/recommendations", response_model=RecommendationsOut)
@@ -2071,6 +2446,69 @@ def update_event_visibility_admin(
     return _serialize_event(event)
 
 
+@app.get("/admin/feedback", response_model=AdminFeedbackSummaryOut)
+def list_feedback_admin(
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    event_feedback = (
+        db.query(models.EventFeedback)
+        .options(
+            joinedload(models.EventFeedback.user),
+            joinedload(models.EventFeedback.event),
+        )
+        .join(models.Event, models.EventFeedback.event_id == models.Event.id)
+        .order_by(models.EventFeedback.created_at.desc())
+        .all()
+    )
+    club_feedback = (
+        db.query(models.ClubActivityFeedback)
+        .options(
+            joinedload(models.ClubActivityFeedback.user),
+            joinedload(models.ClubActivityFeedback.club),
+        )
+        .join(models.Club, models.ClubActivityFeedback.club_id == models.Club.id)
+        .order_by(models.ClubActivityFeedback.created_at.desc())
+        .all()
+    )
+
+    return AdminFeedbackSummaryOut(
+        event_feedback=[
+            AdminEventFeedbackOut(
+                user_id=str(row.user.id),
+                user_email=row.user.email,
+                user_name=_display_user_name(row.user),
+                event_id=str(row.event.id),
+                event_title=row.event.title,
+                event_start_time=row.event.start_time.isoformat(),
+                rating=row.rating,
+                comment=row.comment,
+                submitted_at=row.created_at.isoformat(),
+            )
+            for row in event_feedback
+        ],
+        club_activity_feedback=[
+            AdminClubActivityFeedbackOut(
+                user_id=str(row.user.id),
+                user_email=row.user.email,
+                user_name=_display_user_name(row.user),
+                club_id=str(row.club.id),
+                club_name=row.club.name,
+                activity_start_time=row.activity_start_time.isoformat(),
+                activity_end_time=(
+                    _club_activity_end_time(row.club, row.activity_start_time).isoformat()
+                    if _club_activity_end_time(row.club, row.activity_start_time)
+                    else None
+                ),
+                rating=row.rating,
+                comment=row.comment,
+                submitted_at=row.created_at.isoformat(),
+            )
+            for row in club_feedback
+        ],
+    )
+
+
 @app.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event(event_id: str, db: Session = Depends(get_db)):
     try:
@@ -2091,6 +2529,8 @@ def delete_event(event_id: str, db: Session = Depends(get_db)):
     db.delete(event)
     db.commit()
     return
+
+
 @app.get("/interests", response_model=list[InterestOut])
 def list_interests(category_id: str | None = None, db: Session = Depends(get_db)):
     query = db.query(models.Interest)

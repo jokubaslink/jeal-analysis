@@ -19,6 +19,7 @@ import AdminClubs from "./pages/admin/AdminClubs.jsx";
 import AdminClubForm from "./pages/admin/AdminClubForm.jsx";
 import AdminEvents from "./pages/admin/AdminEvents.jsx";
 import AdminEventForm from "./pages/admin/AdminEventForm.jsx";
+import AdminFeedback from "./pages/admin/AdminFeedback.jsx";
 
 export default function App() {
   return (
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="events" element={<AdminEvents />} />
           <Route path="events/new" element={<AdminEventForm />} />
           <Route path="events/:eventId/edit" element={<AdminEventForm />} />
+          <Route path="feedback" element={<AdminFeedback />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
