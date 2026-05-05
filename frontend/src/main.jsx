@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./auth/AuthContext.jsx";
+import "leaflet/dist/leaflet.css";
 import "./styles/design-tokens.css";
 import "./styles/micro-interactions.css";
 import "./index.css";

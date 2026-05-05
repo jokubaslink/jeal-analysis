@@ -9,6 +9,7 @@ import {
   subscribeToEventRegistrationChanges,
 } from "../lib/eventRegistrations.js";
 import { isEventPast } from "../lib/eventTime.js";
+import EventLocationsMap from "../components/EventLocationsMap.jsx";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
@@ -637,233 +638,237 @@ export default function Events() {
           />
         </div>
       ) : (
-        <div ref={scrollerRef} style={styles.scroller}>
-          {filteredEvents.map((event, index) => {
-            const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
-            const isRegistered = registeredEventIds.has(String(event.id));
-            const isSkipped = skippedIds.has(event.id);
-            const isActive = index === activeIndex;
-            const isToastForThis = feedbackToast?.eventId === event.id;
-            const dateShort = formatEventDateShort(event.start_time);
-            const dateLong = formatEventDateLong(event.start_time);
-            const timeRange = formatTimeRange(event.start_time, event.end_time);
-            const past = isEventPast(event);
+        <div style={styles.resultsColumn}>
+          <EventLocationsMap events={filteredEvents} />
 
-            return (
-              <section
-                key={event.id}
-                ref={(el) => (cardRefs.current[index] = el)}
-                style={styles.cardSlot}
-                aria-label={`${event.title}, card ${index + 1} of ${filteredEvents.length}`}
-              >
-                <article
-                  style={{
-                    ...styles.card,
-                    background: gradient,
-                    transform: isActive ? "scale(1)" : "scale(0.96)",
-                    opacity: isActive ? 1 : 0.85,
-                    filter: isSkipped ? "grayscale(0.6)" : "none",
-                  }}
+          <div ref={scrollerRef} style={styles.scroller}>
+            {filteredEvents.map((event, index) => {
+              const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
+              const isRegistered = registeredEventIds.has(String(event.id));
+              const isSkipped = skippedIds.has(event.id);
+              const isActive = index === activeIndex;
+              const isToastForThis = feedbackToast?.eventId === event.id;
+              const dateShort = formatEventDateShort(event.start_time);
+              const dateLong = formatEventDateLong(event.start_time);
+              const timeRange = formatTimeRange(event.start_time, event.end_time);
+              const past = isEventPast(event);
+
+              return (
+                <section
+                  key={event.id}
+                  ref={(el) => (cardRefs.current[index] = el)}
+                  style={styles.cardSlot}
+                  aria-label={`${event.title}, card ${index + 1} of ${filteredEvents.length}`}
                 >
-                  {event.image_url ? (
-                    <img
-                      src={event.image_url}
-                      alt=""
-                      style={styles.cardImage}
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  <div style={styles.cardOverlay} aria-hidden="true" />
-
-                  <div style={styles.cardContent}>
-                    <div style={styles.cardTopRow}>
-                      <div style={styles.dateBadge} aria-label={`Event date ${dateLong}`}>
-                        <span style={styles.dateBadgeMain}>{dateShort}</span>
-                        {timeRange ? (
-                          <span style={styles.dateBadgeSub}>{timeRange}</span>
-                        ) : null}
-                      </div>
-                      <div style={styles.topBadgeStack}>
-                        {past ? (
-                          <span style={styles.pastBadge} aria-label="Past event">
-                            Past
-                          </span>
-                        ) : null}
-                        {event.score > 0 ? (
-                          <span
-                            style={styles.scoreBadge}
-                            title="Match score based on your interests"
-                          >
-                            ★ Match {event.score}
-                          </span>
-                        ) : null}
-                        {event.is_online ? (
-                          <span style={styles.onlineBadge}>● Online</span>
-                        ) : null}
-                        {isRegistered ? (
-                          <span style={styles.likedBadge}>♥ Going</span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div style={styles.cardMain}>
-                      {event.category_name ? (
-                        <span style={styles.categoryBadge}>{event.category_name}</span>
-                      ) : null}
-                      <h2 style={styles.cardTitle}>{event.title}</h2>
-                      {event.club_name ? (
-                        <p style={styles.cardClub}>by {event.club_name}</p>
-                      ) : null}
-                      <p style={styles.cardDescription}>
-                        {event.description || "No description provided yet."}
-                      </p>
-
-                      <div style={styles.metaRow}>
-                        {event.city ? (
-                          <span style={styles.metaPill}>📍 {event.city}</span>
-                        ) : null}
-                        {event.location ? (
-                          <span style={styles.metaPill}>🏛 {event.location}</span>
-                        ) : null}
-                        <span style={styles.metaPill}>
-                          {event.attendee_count === 1
-                            ? "1 attendee"
-                            : `${event.attendee_count || 0} attendees`}
-                        </span>
-                      </div>
-
-                      <div style={styles.linkRow}>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleRegistration(event)}
-                          disabled={
-                            pendingRegistrationEventId === event.id ||
-                            isLoadingRegistrations ||
-                            (past && !isRegistered)
-                          }
-                          style={{
-                            ...styles.membershipButton,
-                            ...(isRegistered
-                              ? styles.membershipButtonJoined
-                              : styles.membershipButtonPrimary),
-                          }}
-                        >
-                          {pendingRegistrationEventId === event.id
-                            ? "Saving..."
-                            : isLoadingRegistrations
-                              ? "Checking..."
-                              : isRegistered
-                                ? "Leave event"
-                                : "Attend event"}
-                        </button>
-                        <Link to={`/events/${event.id}`} style={styles.detailsButton}>
-                          View details →
-                        </Link>
-                        {event.registration_url ? (
-                          <a
-                            href={event.registration_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={styles.registerButton}
-                          >
-                            Register ↗
-                          </a>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div style={styles.cardBottomRow}>
-                      <p style={styles.scrollHint}>
-                        {index < filteredEvents.length - 1
-                          ? "Scroll down for more ↓"
-                          : "You've reached the end ✨"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={styles.actionRail} aria-label="Card actions">
-                    <button
-                      type="button"
-                      onClick={() => handleSkip(event)}
-                      style={{
-                        ...styles.actionButton,
-                        ...(isSkipped ? styles.actionButtonSkippedActive : null),
-                      }}
-                      aria-label={isSkipped ? "Undo skip" : "Skip this event"}
-                      aria-pressed={isSkipped}
-                      title={isSkipped ? "Undo skip" : "Skip"}
-                    >
-                      <span style={styles.actionGlyph}>✕</span>
-                      <span style={styles.actionLabel}>
-                        {isSkipped ? "Undo" : "Skip"}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggleRegistration(event)}
-                      disabled={
-                        pendingRegistrationEventId === event.id ||
-                        isLoadingRegistrations ||
-                        (past && !isRegistered)
-                      }
-                      style={{
-                        ...styles.actionButton,
-                        ...(isRegistered ? styles.actionButtonLikedActive : null),
-                      }}
-                      aria-label={isRegistered ? "Leave this event" : "Attend this event"}
-                      aria-pressed={isRegistered}
-                      title={isRegistered ? "Leave event" : "Attend event"}
-                    >
-                      <span style={styles.actionGlyph}>♥</span>
-                      <span style={styles.actionLabel}>
-                        {isRegistered ? "Undo" : "Going"}
-                      </span>
-                    </button>
-
-                    {event.registration_url ? (
-                      <a
-                        href={event.registration_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={styles.actionButton}
-                        aria-label="Open registration page"
-                        title="Register"
-                      >
-                        <span style={styles.actionGlyph}>↗</span>
-                        <span style={styles.actionLabel}>Reg</span>
-                      </a>
+                  <article
+                    style={{
+                      ...styles.card,
+                      background: gradient,
+                      transform: isActive ? "scale(1)" : "scale(0.96)",
+                      opacity: isActive ? 1 : 0.85,
+                      filter: isSkipped ? "grayscale(0.6)" : "none",
+                    }}
+                  >
+                    {event.image_url ? (
+                      <img
+                        src={event.image_url}
+                        alt=""
+                        style={styles.cardImage}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                        aria-hidden="true"
+                      />
                     ) : null}
-                  </div>
+                    <div style={styles.cardOverlay} aria-hidden="true" />
 
-                  {isToastForThis ? (
-                    <div
-                      style={{
-                        ...styles.toast,
-                        ...(feedbackToast.kind === "interested" ||
-                        feedbackToast.kind === "interested-undo"
-                          ? styles.toastLike
-                          : styles.toastSkip),
-                      }}
-                      aria-hidden="true"
-                    >
-                      {feedbackToast.kind === "interested"
-                        ? "♥ Going"
-                        : feedbackToast.kind === "interested-undo"
-                          ? "Undo Going"
-                          : feedbackToast.kind === "skip-undo"
-                            ? "Undo Skip"
-                            : "Skipped"}
+                    <div style={styles.cardContent}>
+                      <div style={styles.cardTopRow}>
+                        <div style={styles.dateBadge} aria-label={`Event date ${dateLong}`}>
+                          <span style={styles.dateBadgeMain}>{dateShort}</span>
+                          {timeRange ? (
+                            <span style={styles.dateBadgeSub}>{timeRange}</span>
+                          ) : null}
+                        </div>
+                        <div style={styles.topBadgeStack}>
+                          {past ? (
+                            <span style={styles.pastBadge} aria-label="Past event">
+                              Past
+                            </span>
+                          ) : null}
+                          {event.score > 0 ? (
+                            <span
+                              style={styles.scoreBadge}
+                              title="Match score based on your interests"
+                            >
+                              ★ Match {event.score}
+                            </span>
+                          ) : null}
+                          {event.is_online ? (
+                            <span style={styles.onlineBadge}>● Online</span>
+                          ) : null}
+                          {isRegistered ? (
+                            <span style={styles.likedBadge}>♥ Going</span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={styles.cardMain}>
+                        {event.category_name ? (
+                          <span style={styles.categoryBadge}>{event.category_name}</span>
+                        ) : null}
+                        <h2 style={styles.cardTitle}>{event.title}</h2>
+                        {event.club_name ? (
+                          <p style={styles.cardClub}>by {event.club_name}</p>
+                        ) : null}
+                        <p style={styles.cardDescription}>
+                          {event.description || "No description provided yet."}
+                        </p>
+
+                        <div style={styles.metaRow}>
+                          {event.city ? (
+                            <span style={styles.metaPill}>📍 {event.city}</span>
+                          ) : null}
+                          {event.location ? (
+                            <span style={styles.metaPill}>🏛 {event.location}</span>
+                          ) : null}
+                          <span style={styles.metaPill}>
+                            {event.attendee_count === 1
+                              ? "1 attendee"
+                              : `${event.attendee_count || 0} attendees`}
+                          </span>
+                        </div>
+
+                        <div style={styles.linkRow}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRegistration(event)}
+                            disabled={
+                              pendingRegistrationEventId === event.id ||
+                              isLoadingRegistrations ||
+                              (past && !isRegistered)
+                            }
+                            style={{
+                              ...styles.membershipButton,
+                              ...(isRegistered
+                                ? styles.membershipButtonJoined
+                                : styles.membershipButtonPrimary),
+                            }}
+                          >
+                            {pendingRegistrationEventId === event.id
+                              ? "Saving..."
+                              : isLoadingRegistrations
+                                ? "Checking..."
+                                : isRegistered
+                                  ? "Leave event"
+                                  : "Attend event"}
+                          </button>
+                          <Link to={`/events/${event.id}`} style={styles.detailsButton}>
+                            View details →
+                          </Link>
+                          {event.registration_url ? (
+                            <a
+                              href={event.registration_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={styles.registerButton}
+                            >
+                              Register ↗
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={styles.cardBottomRow}>
+                        <p style={styles.scrollHint}>
+                          {index < filteredEvents.length - 1
+                            ? "Scroll down for more ↓"
+                            : "You've reached the end ✨"}
+                        </p>
+                      </div>
                     </div>
-                  ) : null}
-                </article>
-              </section>
-            );
-          })}
+
+                    <div style={styles.actionRail} aria-label="Card actions">
+                      <button
+                        type="button"
+                        onClick={() => handleSkip(event)}
+                        style={{
+                          ...styles.actionButton,
+                          ...(isSkipped ? styles.actionButtonSkippedActive : null),
+                        }}
+                        aria-label={isSkipped ? "Undo skip" : "Skip this event"}
+                        aria-pressed={isSkipped}
+                        title={isSkipped ? "Undo skip" : "Skip"}
+                      >
+                        <span style={styles.actionGlyph}>✕</span>
+                        <span style={styles.actionLabel}>
+                          {isSkipped ? "Undo" : "Skip"}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRegistration(event)}
+                        disabled={
+                          pendingRegistrationEventId === event.id ||
+                          isLoadingRegistrations ||
+                          (past && !isRegistered)
+                        }
+                        style={{
+                          ...styles.actionButton,
+                          ...(isRegistered ? styles.actionButtonLikedActive : null),
+                        }}
+                        aria-label={isRegistered ? "Leave this event" : "Attend this event"}
+                        aria-pressed={isRegistered}
+                        title={isRegistered ? "Leave event" : "Attend event"}
+                      >
+                        <span style={styles.actionGlyph}>♥</span>
+                        <span style={styles.actionLabel}>
+                          {isRegistered ? "Undo" : "Going"}
+                        </span>
+                      </button>
+
+                      {event.registration_url ? (
+                        <a
+                          href={event.registration_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={styles.actionButton}
+                          aria-label="Open registration page"
+                          title="Register"
+                        >
+                          <span style={styles.actionGlyph}>↗</span>
+                          <span style={styles.actionLabel}>Reg</span>
+                        </a>
+                      ) : null}
+                    </div>
+
+                    {isToastForThis ? (
+                      <div
+                        style={{
+                          ...styles.toast,
+                          ...(feedbackToast.kind === "interested" ||
+                          feedbackToast.kind === "interested-undo"
+                            ? styles.toastLike
+                            : styles.toastSkip),
+                        }}
+                        aria-hidden="true"
+                      >
+                        {feedbackToast.kind === "interested"
+                          ? "♥ Going"
+                          : feedbackToast.kind === "interested-undo"
+                            ? "Undo Going"
+                            : feedbackToast.kind === "skip-undo"
+                              ? "Undo Skip"
+                              : "Skipped"}
+                      </div>
+                    ) : null}
+                  </article>
+                </section>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -1034,6 +1039,11 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+  },
+  resultsColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
   },
   scroller: {
     height: SCROLLER_HEIGHT,
