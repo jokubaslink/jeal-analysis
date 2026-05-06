@@ -1,4 +1,7 @@
+import base64
 import hashlib
+import hmac
+import json
 import os
 import uuid
 from datetime import datetime, time, timedelta, timezone
@@ -398,6 +401,31 @@ class ClubActivityFeedbackOut(BaseModel):
 class ClubFeedbackContextOut(BaseModel):
     opportunities: list[ClubFeedbackOpportunityOut]
     submitted_feedback: list[ClubActivityFeedbackOut]
+
+
+class CheckInTokenOut(BaseModel):
+    token: str
+    check_in_path: str
+    qr_data: str
+    title: str
+    activity_start_time: str | None = None
+
+
+class CheckInRequest(BaseModel):
+    token: str
+
+
+class CheckInOut(BaseModel):
+    type: str
+    title: str
+    activity_start_time: str | None = None
+    checked_in_at: str
+    already_checked_in: bool
+
+
+class AttendanceStatusOut(BaseModel):
+    attended: bool
+    checked_in_at: str | None = None
 
 
 class EventCreate(BaseModel):
@@ -812,6 +840,78 @@ def _event_feedback_cutoff(event: models.Event) -> datetime:
 
 def _is_event_feedback_open(event: models.Event) -> bool:
     return _event_feedback_cutoff(event) <= datetime.now(timezone.utc)
+
+
+def _check_in_secret() -> bytes:
+    return os.getenv("CHECK_IN_TOKEN_SECRET", "dev-check-in-token-secret").encode("utf-8")
+
+
+def _b64url_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def _sign_check_in_payload(payload: dict) -> str:
+    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    encoded_body = _b64url_encode(body)
+    signature = hmac.new(_check_in_secret(), encoded_body.encode("ascii"), hashlib.sha256).digest()
+    return f"{encoded_body}.{_b64url_encode(signature)}"
+
+
+def _verify_check_in_token(token: str) -> dict:
+    try:
+        encoded_body, encoded_signature = token.split(".", 1)
+        expected = hmac.new(_check_in_secret(), encoded_body.encode("ascii"), hashlib.sha256).digest()
+        actual = _b64url_decode(encoded_signature)
+        if not hmac.compare_digest(expected, actual):
+            raise ValueError
+        payload = json.loads(_b64url_decode(encoded_body).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid check-in code.",
+        )
+
+    if payload.get("type") not in {"event", "club"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid check-in code.",
+        )
+    return payload
+
+
+def _event_check_in_token(event: models.Event) -> str:
+    return _sign_check_in_payload({"type": "event", "event_id": str(event.id)})
+
+
+def _normalize_activity_start(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def _default_club_activity_start(club: models.Club) -> datetime:
+    if club.meeting_weekday is None or club.meeting_start_time is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Club needs a meeting weekday and start time before QR check-in can be generated.",
+        )
+    today = datetime.now(timezone.utc).date()
+    candidate_date = today - timedelta(days=(today.weekday() - club.meeting_weekday) % 7)
+    return datetime.combine(candidate_date, club.meeting_start_time, tzinfo=timezone.utc)
+
+
+def _club_check_in_token(club: models.Club, activity_start_time: datetime) -> str:
+    activity_start_time = _normalize_activity_start(activity_start_time)
+    return _sign_check_in_payload(
+        {
+            "type": "club",
+            "club_id": str(club.id),
+            "activity_start_time": activity_start_time.isoformat(),
+        }
+    )
 
 
 def _club_activity_end_time(
@@ -2196,6 +2296,168 @@ def get_event_feedback(
     return _serialize_event_feedback(feedback) if feedback else None
 
 
+@app.get("/events/{event_id}/attendance", response_model=AttendanceStatusOut)
+def get_event_attendance(
+    event_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    attendance = (
+        db.query(models.EventAttendance)
+        .filter(models.EventAttendance.user_id == current_user.id)
+        .filter(models.EventAttendance.event_id == event.id)
+        .first()
+    )
+    return AttendanceStatusOut(
+        attended=attendance is not None,
+        checked_in_at=attendance.checked_in_at.isoformat() if attendance else None,
+    )
+
+
+@app.get("/admin/events/{event_id}/check-in-token", response_model=CheckInTokenOut)
+def get_event_check_in_token(
+    event_id: str,
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    token = _event_check_in_token(event)
+    return CheckInTokenOut(
+        token=token,
+        check_in_path=f"/check-in?token={token}",
+        qr_data=f"/check-in?token={token}",
+        title=event.title,
+    )
+
+
+@app.get("/admin/clubs/{club_id}/check-in-token", response_model=CheckInTokenOut)
+def get_club_check_in_token(
+    club_id: str,
+    activity_start_time: datetime | None = Query(default=None),
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    activity_start = (
+        _normalize_activity_start(activity_start_time)
+        if activity_start_time is not None
+        else _default_club_activity_start(club)
+    )
+    token = _club_check_in_token(club, activity_start)
+    return CheckInTokenOut(
+        token=token,
+        check_in_path=f"/check-in?token={token}",
+        qr_data=f"/check-in?token={token}",
+        title=club.name,
+        activity_start_time=activity_start.isoformat(),
+    )
+
+
+@app.post("/attendance/check-in", response_model=CheckInOut)
+def check_in_with_token(
+    payload: CheckInRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    data = _verify_check_in_token(payload.token)
+    now = datetime.now(timezone.utc)
+
+    if data["type"] == "event":
+        event = _get_event_or_404(data.get("event_id", ""), db=db)
+        registration = (
+            db.query(models.UserEventRegistration)
+            .filter(models.UserEventRegistration.user_id == current_user.id)
+            .filter(models.UserEventRegistration.event_id == event.id)
+            .first()
+        )
+        if not registration:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Register for this event before checking in.",
+            )
+
+        attendance = (
+            db.query(models.EventAttendance)
+            .filter(models.EventAttendance.user_id == current_user.id)
+            .filter(models.EventAttendance.event_id == event.id)
+            .first()
+        )
+        already_checked_in = attendance is not None
+        if attendance is None:
+            attendance = models.EventAttendance(
+                user_id=current_user.id,
+                event_id=event.id,
+                checked_in_at=now,
+                check_in_method="qr",
+            )
+            db.add(attendance)
+            db.commit()
+            db.refresh(attendance)
+
+        return CheckInOut(
+            type="event",
+            title=event.title,
+            checked_in_at=attendance.checked_in_at.isoformat(),
+            already_checked_in=already_checked_in,
+        )
+
+    club = _get_club_or_404(data.get("club_id", ""), db=db)
+    try:
+        activity_start = datetime.fromisoformat(data.get("activity_start_time", ""))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid club activity check-in code.",
+        )
+    activity_start = _normalize_activity_start(activity_start)
+
+    membership = (
+        db.query(models.UserClubMembership)
+        .filter(models.UserClubMembership.user_id == current_user.id)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Join this club before checking in.",
+        )
+    if not _is_valid_club_feedback_occurrence(membership, activity_start):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This check-in code is not for a valid past club activity.",
+        )
+
+    attendance = (
+        db.query(models.ClubActivityAttendance)
+        .filter(models.ClubActivityAttendance.user_id == current_user.id)
+        .filter(models.ClubActivityAttendance.club_id == club.id)
+        .filter(models.ClubActivityAttendance.activity_start_time == activity_start)
+        .first()
+    )
+    already_checked_in = attendance is not None
+    if attendance is None:
+        attendance = models.ClubActivityAttendance(
+            user_id=current_user.id,
+            club_id=club.id,
+            activity_start_time=activity_start,
+            checked_in_at=now,
+            check_in_method="qr",
+        )
+        db.add(attendance)
+        db.commit()
+        db.refresh(attendance)
+
+    return CheckInOut(
+        type="club",
+        title=club.name,
+        activity_start_time=activity_start.isoformat(),
+        checked_in_at=attendance.checked_in_at.isoformat(),
+        already_checked_in=already_checked_in,
+    )
+
+
 @app.post("/events/{event_id}/feedback", response_model=EventFeedbackOut, status_code=status.HTTP_201_CREATED)
 def create_event_feedback(
     event_id: str,
@@ -2205,16 +2467,16 @@ def create_event_feedback(
 ):
     event = _get_event_or_404(event_id, db=db)
 
-    registration = (
-        db.query(models.UserEventRegistration)
-        .filter(models.UserEventRegistration.user_id == current_user.id)
-        .filter(models.UserEventRegistration.event_id == event.id)
+    attendance = (
+        db.query(models.EventAttendance)
+        .filter(models.EventAttendance.user_id == current_user.id)
+        .filter(models.EventAttendance.event_id == event.id)
         .first()
     )
-    if not registration:
+    if not attendance:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only leave feedback for events you attended.",
+            detail="Check in at this event before leaving feedback.",
         )
     if not _is_event_feedback_open(event):
         raise HTTPException(
@@ -2372,12 +2634,28 @@ def get_club_feedback_context(
         .all()
     )
     submitted_start_times = {row.activity_start_time for row in submitted_feedback}
+    attended_activities = (
+        db.query(models.ClubActivityAttendance)
+        .filter(models.ClubActivityAttendance.user_id == current_user.id)
+        .filter(models.ClubActivityAttendance.club_id == club.id)
+        .order_by(models.ClubActivityAttendance.activity_start_time.desc())
+        .limit(12)
+        .all()
+    )
 
     return ClubFeedbackContextOut(
-        opportunities=_build_recent_club_feedback_opportunities(
-            membership,
-            submitted_start_times,
-        ),
+        opportunities=[
+            ClubFeedbackOpportunityOut(
+                activity_start_time=row.activity_start_time.isoformat(),
+                activity_end_time=(
+                    _club_activity_end_time(club, row.activity_start_time).isoformat()
+                    if _club_activity_end_time(club, row.activity_start_time)
+                    else None
+                ),
+                already_submitted=row.activity_start_time in submitted_start_times,
+            )
+            for row in attended_activities
+        ],
         submitted_feedback=[
             _serialize_club_activity_feedback(row) for row in submitted_feedback
         ],
@@ -2404,10 +2682,17 @@ def create_club_activity_feedback(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only leave feedback for clubs you joined.",
         )
-    if not _is_valid_club_feedback_occurrence(membership, payload.activity_start_time):
+    attendance = (
+        db.query(models.ClubActivityAttendance)
+        .filter(models.ClubActivityAttendance.user_id == current_user.id)
+        .filter(models.ClubActivityAttendance.club_id == club.id)
+        .filter(models.ClubActivityAttendance.activity_start_time == payload.activity_start_time)
+        .first()
+    )
+    if not attendance:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Feedback can only be submitted for a past club activity you attended.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Check in at this club activity before leaving feedback.",
         )
 
     existing = (

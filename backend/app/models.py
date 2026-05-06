@@ -43,6 +43,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    event_attendance_entries = relationship(
+        "EventAttendance",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     club_memberships = relationship(
         "UserClubMembership",
         back_populates="user",
@@ -50,6 +55,11 @@ class User(Base):
     )
     club_activity_feedback_entries = relationship(
         "ClubActivityFeedback",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    club_activity_attendance_entries = relationship(
+        "ClubActivityAttendance",
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -241,6 +251,11 @@ class Event(Base):
         back_populates="event",
         cascade="all, delete-orphan",
     )
+    attendance_entries = relationship(
+        "EventAttendance",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -285,6 +300,31 @@ class UserClubMembership(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class EventAttendance(Base):
+    __tablename__ = "event_attendance"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    checked_in_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    check_in_method = Column(String(50), nullable=False, server_default="qr")
+
+    user = relationship("User", back_populates="event_attendance_entries")
+    event = relationship("Event", back_populates="attendance_entries")
+
+
+class ClubActivityAttendance(Base):
+    __tablename__ = "club_activity_attendance"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id", ondelete="CASCADE"), primary_key=True)
+    activity_start_time = Column(DateTime(timezone=True), primary_key=True)
+    checked_in_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    check_in_method = Column(String(50), nullable=False, server_default="qr")
+
+    user = relationship("User", back_populates="club_activity_attendance_entries")
+    club = relationship("Club")
 
 
 class EventFeedback(Base):

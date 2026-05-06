@@ -10,6 +10,7 @@ import Clubs from "./pages/Clubs.jsx";
 import ClubDetail from "./pages/ClubDetail.jsx";
 import Events from "./pages/Events.jsx";
 import EventDetail from "./pages/EventDetail.jsx";
+import CheckIn from "./pages/CheckIn.jsx";
 import Layout from "./components/Layout.jsx";
 import AdminLayout from "./components/AdminLayout.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
@@ -58,6 +59,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <EventDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/check-in"
+          element={
+            <ProtectedRoute>
+              <CheckIn />
             </ProtectedRoute>
           }
         />

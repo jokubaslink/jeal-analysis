@@ -37,6 +37,8 @@ export default function EventDetail() {
   const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
   const [existingFeedback, setExistingFeedback] = useState(null);
   const [isLoadingFeedback, setIsLoadingFeedback] = useState(true);
+  const [attendanceStatus, setAttendanceStatus] = useState({ attended: false, checked_in_at: null });
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(true);
   const [isSavingFeedback, setIsSavingFeedback] = useState(false);
   const [feedbackErrorMessage, setFeedbackErrorMessage] = useState("");
   const [feedbackSuccessMessage, setFeedbackSuccessMessage] = useState("");
@@ -135,6 +137,40 @@ export default function EventDetail() {
     };
 
     loadFeedback();
+    return () => {
+      ignore = true;
+    };
+  }, [eventId, userId]);
+
+  useEffect(() => {
+    if (!userId || !eventId) {
+      setAttendanceStatus({ attended: false, checked_in_at: null });
+      setIsLoadingAttendance(false);
+      return undefined;
+    }
+
+    let ignore = false;
+
+    const loadAttendance = async () => {
+      setIsLoadingAttendance(true);
+      try {
+        const response = await apiFetch(`/events/${eventId}/attendance`);
+        if (!ignore) {
+          setAttendanceStatus({
+            attended: !!response?.attended,
+            checked_in_at: response?.checked_in_at || null,
+          });
+        }
+      } catch {
+        if (!ignore) {
+          setAttendanceStatus({ attended: false, checked_in_at: null });
+        }
+      } finally {
+        if (!ignore) setIsLoadingAttendance(false);
+      }
+    };
+
+    loadAttendance();
     return () => {
       ignore = true;
     };
@@ -270,7 +306,7 @@ export default function EventDetail() {
   }
 
   const past = isEventPast(event);
-  const canLeaveFeedback = past && isRegistered;
+  const canLeaveFeedback = past && attendanceStatus.attended;
 
   return (
     <div style={page}>
@@ -371,9 +407,11 @@ export default function EventDetail() {
         <h2 style={sectionTitle}>Your feedback</h2>
         {feedbackErrorMessage ? <Alert variant="error">{feedbackErrorMessage}</Alert> : null}
         {feedbackSuccessMessage ? <Alert variant="success">{feedbackSuccessMessage}</Alert> : null}
-        {!canLeaveFeedback ? (
+        {isLoadingAttendance ? (
+          <p style={helperText}>Checking your attendance…</p>
+        ) : !canLeaveFeedback ? (
           <p style={description}>
-            Feedback becomes available after the event ends for attendees only.
+            Feedback becomes available after the event ends and after you check in with the event QR code.
           </p>
         ) : isLoadingFeedback ? (
           <p style={helperText}>Loading your feedback status…</p>

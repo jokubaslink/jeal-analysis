@@ -10,6 +10,10 @@ function formatDate(isoDateTime) {
   return date.toLocaleString();
 }
 
+function qrImageUrl(value) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(value)}`;
+}
+
 export default function AdminEvents() {
   const location = useLocation();
   const [events, setEvents] = useState([]);
@@ -17,6 +21,8 @@ export default function AdminEvents() {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [flashMessage, setFlashMessage] = useState("");
   const [pendingVisibilityId, setPendingVisibilityId] = useState("");
+  const [checkInQr, setCheckInQr] = useState(null);
+  const [pendingQrId, setPendingQrId] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -75,6 +81,25 @@ export default function AdminEvents() {
     }
   }
 
+  async function handleShowCheckInQr(eventItem) {
+    setPendingQrId(eventItem.id);
+    setEventsError("");
+    setFlashMessage("");
+    try {
+      const payload = await apiFetch(`/admin/events/${eventItem.id}/check-in-token`);
+      const checkInUrl = new URL(payload.check_in_path, window.location.origin).toString();
+      setCheckInQr({
+        title: payload.title,
+        checkInUrl,
+        qrUrl: qrImageUrl(checkInUrl),
+      });
+    } catch (e) {
+      setEventsError(e.message || "Could not generate check-in QR code.");
+    } finally {
+      setPendingQrId("");
+    }
+  }
+
   return (
     <Card>
       <CardTitle>All events</CardTitle>
@@ -95,6 +120,25 @@ export default function AdminEvents() {
       {flashMessage ? (
         <div className="mt-[length:var(--space-7)]">
           <Alert variant="success">{flashMessage}</Alert>
+        </div>
+      ) : null}
+
+      {checkInQr ? (
+        <div className="mt-[length:var(--space-7)] rounded-lg border border-[var(--color-line)] bg-white p-[length:var(--space-5)]">
+          <div className="flex flex-wrap items-start gap-[length:var(--space-5)]">
+            <img src={checkInQr.qrUrl} alt={`Check-in QR for ${checkInQr.title}`} width="220" height="220" />
+            <div className="min-w-0 flex-1">
+              <h3 className="m-0 text-lg font-semibold text-[var(--color-ink)]">{checkInQr.title}</h3>
+              <p className="mt-[length:var(--space-2)] break-all text-sm text-[var(--color-ink-subtle)]">
+                {checkInQr.checkInUrl}
+              </p>
+              <div className="mt-[length:var(--space-4)]">
+                <Button type="button" variant="secondary" onClick={() => setCheckInQr(null)}>
+                  Hide QR
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -146,6 +190,14 @@ export default function AdminEvents() {
                             : event.is_active
                               ? "Mark inactive"
                               : "Reactivate"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={pendingQrId === event.id}
+                          onClick={() => handleShowCheckInQr(event)}
+                        >
+                          {pendingQrId === event.id ? "Loading..." : "Check-in QR"}
                         </Button>
                         <Link to={`/admin/events/${event.id}/edit`}>
                           <Button type="button" variant="secondary">

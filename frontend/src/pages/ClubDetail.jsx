@@ -397,7 +397,7 @@ export default function ClubDetail() {
         {feedbackSuccessMessage ? <Alert variant="success">{feedbackSuccessMessage}</Alert> : null}
         {!isMember ? (
           <p style={description}>
-            Join the club first, then you can leave feedback after attending a scheduled activity.
+            Join the club first, then check in with the activity QR code before leaving feedback.
           </p>
         ) : isLoadingFeedback ? (
           <p style={membershipHint}>Loading recent club activities…</p>
@@ -464,8 +464,8 @@ export default function ClubDetail() {
             ) : (
               <p style={description}>
                 {feedbackContext.submitted_feedback.length > 0
-                  ? "You have already submitted feedback for the recent eligible club activities."
-                  : "No past club activities are eligible for feedback yet."}
+                  ? "You have already submitted feedback for the club activities you checked into."
+                  : "No checked-in club activities are eligible for feedback yet."}
               </p>
             )}
 
