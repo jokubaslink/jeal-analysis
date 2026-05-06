@@ -1,20 +1,49 @@
 const KNOWN_EVENT_LOCATIONS = [
   {
     city: "Vilnius",
-    latitude: 54.72217,
-    longitude: 25.33712,
+    latitude: 54.6859,
+    longitude: 25.2877,
     aliases: [
       "cathedral square meeting point",
-      "gedimino ave. 7, vilnius",
+      "cathedral square",
     ],
     label: "Cathedral Square",
   },
   {
     city: "Vilnius",
-    latitude: 54.72455,
-    longitude: 25.33684,
-    aliases: ["vilnius university observatory courtyard"],
-    label: "VU Observatory Courtyard",
+    latitude: 54.6871,
+    longitude: 25.2791,
+    aliases: [
+      "gedimino ave. 7, vilnius",
+      "gedimino pr. 7, vilnius",
+      "ism university, gedimino pr. 7, vilnius",
+    ],
+    label: "ISM University",
+  },
+  {
+    city: "Vilnius",
+    latitude: 54.6828,
+    longitude: 25.2877,
+    aliases: [
+      "vilnius university observatory courtyard",
+      "vilnius university, universiteto g. 3, vilnius",
+      "universiteto g. 3, vilnius",
+      "vu central campus seminar room",
+      "vu faculty study space",
+      "vilnius university",
+    ],
+    label: "Vilnius University",
+  },
+  {
+    city: "Vilnius",
+    latitude: 54.6832,
+    longitude: 25.2688,
+    aliases: [
+      "vilnius university cultural center",
+      "vilnius university cultural center, m. k. ciurlionio g. 21, vilnius",
+      "m. k. ciurlionio g. 21, vilnius",
+    ],
+    label: "VU Cultural Center",
   },
   {
     city: "Vilnius",
@@ -97,7 +126,10 @@ const KNOWN_EVENT_LOCATIONS = [
     city: "Vilnius",
     latitude: 54.72373,
     longitude: 25.33695,
-    aliases: ["sauletekio av. 11, vilnius"],
+    aliases: [
+      "sauletekio av. 11, vilnius",
+      "sauletekio al. 11, vilnius",
+    ],
     label: "Sauletekio 11",
   },
   {
@@ -108,10 +140,33 @@ const KNOWN_EVENT_LOCATIONS = [
       "vilnius tech",
       "vilnius tech, sauletekio ave. 11",
       "vilnius tech, sauletekio av. 11",
+      "vilnius tech, sauletekio al. 11, vilnius",
       "vilnius tech sustainability hub, s4 building, sauletekio al. 11",
       "vilnius tech central building, aula magna",
     ],
     label: "VILNIUS TECH",
+  },
+  {
+    city: "Vilnius",
+    latitude: 54.7243,
+    longitude: 25.3346,
+    aliases: [
+      "vilnius tech sports and arts centre",
+      "vilnius tech sports and arts centre, sauletekio al. 28, vilnius",
+      "sauletekio al. 28, vilnius",
+    ],
+    label: "VILNIUS TECH Sports and Arts Centre",
+  },
+  {
+    city: "Vilnius",
+    latitude: 54.724,
+    longitude: 25.3317,
+    aliases: [
+      "vilnius tech library",
+      "vilnius tech library, sauletekio al. 14, vilnius",
+      "sauletekio al. 14, vilnius",
+    ],
+    label: "VILNIUS TECH Library",
   },
   {
     city: "Kaunas",
@@ -122,17 +177,35 @@ const KNOWN_EVENT_LOCATIONS = [
   },
   {
     city: "Kaunas",
-    latitude: 54.8974,
-    longitude: 23.9152,
+    latitude: 54.9043,
+    longitude: 23.9585,
     aliases: [
       "kaunas university of technology",
+      "kaunas university of technology, k. donelaicio g. 73, kaunas",
+      "k. donelaicio g. 73, kaunas",
       "ktu, studentu str. 50, room 106",
+      "ktu faculty of informatics, studentu g. 50, kaunas",
+      "studentu g. 50, kaunas",
       "ktu faculty of mechanical engineering and design, studentu str. 56",
       "ktu faculty of mechanical engineering and design, studentu st. 56",
+      "ktu faculty of mechanical engineering and design, studentu g. 56, kaunas",
       "ktu m-lab, studentu st. 63a",
+      "ktu m-lab, studentu g. 63a, kaunas",
       "studentu g. 56, kaunas",
     ],
     label: "KTU Campus",
+  },
+  {
+    city: "Kaunas",
+    latitude: 54.9049,
+    longitude: 23.9559,
+    aliases: [
+      "ktu sports and wellness centre",
+      "ktu sports and wellness centre, studentu g. 48, kaunas",
+      "studentu st. 48, kaunas",
+      "studentu g. 48, kaunas",
+    ],
+    label: "KTU Sports and Wellness Centre",
   },
   {
     city: "Kaunas",
@@ -147,8 +220,14 @@ const KNOWN_EVENT_LOCATIONS = [
     longitude: 23.91228,
     aliases: [
       "vytautas magnus university",
+      "vytautas magnus university, k. donelaicio g. 58, kaunas",
+      "k. donelaicio g. 58, kaunas",
       "mickeviciaus g. 9, kaunas",
       "arts hub studio 3",
+      "vmu student lounge",
+      "vmu campus courtyard",
+      "vmu social sciences classroom",
+      "vmu conference hall",
     ],
     label: "Vytautas Magnus University",
   },
@@ -163,7 +242,13 @@ const KNOWN_EVENT_LOCATIONS = [
     city: "Kaunas",
     latitude: 54.89796,
     longitude: 23.90492,
-    aliases: ["kauno menininku namai", "lds kauno skyrius / galerija drobe"],
+    aliases: [
+      "kauno menininku namai",
+      "lds kauno skyrius / galerija drobe",
+      "kauno paveikslu galerija",
+      "kavine kultura",
+      "kavine kultura (kauno paveikslu galerijos kiemelis)",
+    ],
     label: "Kaunas Artists' House",
   },
   {
@@ -184,10 +269,91 @@ const KNOWN_EVENT_LOCATIONS = [
     city: "Kaunas",
     latitude: 54.9065,
     longitude: 23.9268,
-    aliases: ["lithuanian university of health sciences", "lsmu veterinarijos akademija"],
+    aliases: [
+      "lithuanian university of health sciences",
+      "lithuanian university of health sciences, a. mickeviciaus g. 9, kaunas",
+      "a. mickeviciaus g. 9, kaunas",
+      "lsmu veterinarijos akademija",
+    ],
     label: "LSMU",
   },
+  {
+    city: "Kaunas",
+    latitude: 54.8844,
+    longitude: 23.9347,
+    aliases: ["girstucio rumai"],
+    label: "Girstutis",
+  },
+  {
+    city: "Kaunas",
+    latitude: 54.8995,
+    longitude: 23.9183,
+    aliases: [
+      "kauno sv. arkangelo mykolo (igulos) baznycia (soboras)",
+      "soboras",
+    ],
+    label: "St. Michael the Archangel Church",
+  },
+  {
+    city: "Kaunas",
+    latitude: 54.8944,
+    longitude: 23.9216,
+    aliases: ["kkc / kauno kulturos centras", "kauno kulturos centras"],
+    label: "Kaunas Cultural Centre",
+  },
+  {
+    city: "Kaunas",
+    latitude: 54.908,
+    longitude: 23.914,
+    aliases: [
+      "hogas pub",
+      "impro kaunas teatro sale",
+      "4 metu laikai",
+      "el tango club espacio cultural",
+      "jonavos g. 7, teslos sale",
+      "kauno sporto mokykla bangputys",
+    ],
+    label: "Kaunas Venue",
+  },
+  {
+    city: "Klaipeda",
+    latitude: 55.7261,
+    longitude: 21.1249,
+    aliases: [
+      "klaipeda university",
+      "klaipeda university, herkaus manto g. 84, klaipeda",
+      "klaipeda university sports centre",
+      "klaipeda university sports centre, herkaus manto g. 84, klaipeda",
+      "herkaus manto g. 84, klaipeda",
+      "klaipeda university courtyard",
+      "klaipeda university sports hall",
+      "klaipeda university music room",
+      "klaipeda university black box room",
+    ],
+    label: "Klaipeda University",
+  },
 ];
+
+const CITY_FALLBACK_LOCATIONS = {
+  vilnius: {
+    city: "Vilnius",
+    latitude: 54.6872,
+    longitude: 25.2797,
+    label: "Vilnius",
+  },
+  kaunas: {
+    city: "Kaunas",
+    latitude: 54.8985,
+    longitude: 23.9036,
+    label: "Kaunas",
+  },
+  klaipeda: {
+    city: "Klaipeda",
+    latitude: 55.7033,
+    longitude: 21.1443,
+    label: "Klaipeda",
+  },
+};
 
 function normalizeText(value) {
   return String(value || "")
@@ -246,5 +412,14 @@ export function getEventMapPoint(event) {
     };
   }
 
-  return null;
+  const cityFallback = CITY_FALLBACK_LOCATIONS[normalizeText(event.city)];
+  if (!cityFallback) return null;
+
+  return {
+    latitude: cityFallback.latitude,
+    longitude: cityFallback.longitude,
+    city: event.city || cityFallback.city,
+    location: event.location,
+    label: event.location || cityFallback.label,
+  };
 }

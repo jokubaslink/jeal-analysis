@@ -102,6 +102,7 @@ class Interest(Base):
 
     category = relationship("InterestCategory", back_populates="interests")
     user_links = relationship("UserInterest", back_populates="interest", cascade="all, delete-orphan")
+    club_links = relationship("ClubInterest", back_populates="interest", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("category_id", "name", name="uq_interest_category_name"),
@@ -137,6 +138,22 @@ class UserInterest(Base):
     )
 
 
+class ClubInterest(Base):
+    __tablename__ = "club_interests"
+
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id", ondelete="CASCADE"), primary_key=True)
+    interest_id = Column(UUID(as_uuid=True), ForeignKey("interests.id", ondelete="CASCADE"), primary_key=True)
+
+    club = relationship("Club", back_populates="interest_links")
+    interest = relationship("Interest", back_populates="club_links")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class Club(Base):
     __tablename__ = "clubs"
 
@@ -157,6 +174,7 @@ class Club(Base):
     meeting_end_time = Column(Time(timezone=False), nullable=True)
 
     category = relationship("InterestCategory", back_populates="clubs")
+    interest_links = relationship("ClubInterest", back_populates="club", cascade="all, delete-orphan")
     events = relationship("Event", back_populates="club", cascade="all, delete-orphan")
     memberships = relationship(
         "UserClubMembership",

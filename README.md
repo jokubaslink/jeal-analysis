@@ -58,7 +58,7 @@ When you change tokens, update `design-tokens.css` and keep the `:root` block in
 
   On Windows, if `alembic` is not on your `PATH`, use `python -m alembic` as shown above.
 
-  This applies the schema migrations and seeds sample interest categories, interests, clubs, and a richer event set for development/testing. The latest seed data includes real Lithuanian university organisations and official 2026 event listings with source URLs, covering sports, arts, STEM, social/community, and hobbies across multiple upcoming dates so recommendations, filters, event details, and dashboard registrations have realistic data.
+  This applies the schema migrations and seeds sample interest categories, interests, clubs, and a richer event set for development/testing. The latest seed data includes real Lithuanian university organisations, broader student interests, club-to-interest links, and official 2026 event listings with source URLs, covering sports, arts, STEM, social/community, and hobbies across multiple upcoming dates so recommendations, filters, event details, and dashboard registrations have realistic data.
 
 ### Default admin account (development)
 
@@ -128,6 +128,6 @@ Use these credentials on the app **Login** page. This account has **`is_admin`**
     - **PATCH** `/events/{event_id}`: update event details.
     - **DELETE** `/events/{event_id}`: delete event.
 
-The seeded development data includes several sample clubs and linked events so these endpoints can be exercised immediately after running migrations.
+The seeded development data includes sample and real-world-inspired clubs, a `club_interests` mapping table, and linked events so interest selections can lead to believable club and event recommendations immediately after running migrations.
 
 All of these endpoints are wired to the PostgreSQL database via SQLAlchemy models in `backend/app/models.py` and migrations in `alembic/versions`.

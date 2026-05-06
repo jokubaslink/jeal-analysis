@@ -1099,8 +1099,56 @@ def _get_category_interest_counts(user_id, db: Session) -> dict:
     return {row[0]: int(row[1]) for row in rows if row[0] is not None}
 
 
+def _get_user_interest_ids(user_id, db: Session) -> set[uuid.UUID]:
+    rows = (
+        db.query(models.UserInterest.interest_id)
+        .filter(models.UserInterest.user_id == user_id)
+        .all()
+    )
+    return {row[0] for row in rows if row[0] is not None}
+
+
+def _score_club_for_user(
+    club: models.Club,
+    category_interest_counts: dict,
+    user_interest_ids: set[uuid.UUID],
+) -> int:
+    exact_interest_matches = 0
+    if user_interest_ids:
+        exact_interest_matches = sum(
+            1
+            for link in getattr(club, "interest_links", []) or []
+            if link.interest_id in user_interest_ids
+        )
+
+    category_score = category_interest_counts.get(club.category_id, 0)
+    return (exact_interest_matches * 3) + category_score
+
+
+def _score_event_for_user(
+    event: models.Event,
+    category_interest_counts: dict,
+    user_interest_ids: set[uuid.UUID],
+) -> int:
+    event_category_score = category_interest_counts.get(event.category_id, 0)
+    club_category_score = 0
+    exact_club_interest_matches = 0
+
+    if event.club:
+        club_category_score = category_interest_counts.get(event.club.category_id, 0)
+        if user_interest_ids:
+            exact_club_interest_matches = sum(
+                1
+                for link in getattr(event.club, "interest_links", []) or []
+                if link.interest_id in user_interest_ids
+            )
+
+    return (exact_club_interest_matches * 3) + max(event_category_score, club_category_score)
+
+
 def _build_recommended_clubs(
     category_interest_counts: dict,
+    user_interest_ids: set[uuid.UUID],
     *,
     limit: int,
     db: Session,
@@ -1112,6 +1160,7 @@ def _build_recommended_clubs(
         db.query(models.Club)
         .options(
             joinedload(models.Club.category),
+            joinedload(models.Club.interest_links),
             joinedload(models.Club.memberships),
         )
         .filter(models.Club.is_active.is_(True))
@@ -1120,7 +1169,7 @@ def _build_recommended_clubs(
 
     scored: list[tuple[int, models.Club]] = []
     for club in clubs:
-        score = category_interest_counts.get(club.category_id, 0)
+        score = _score_club_for_user(club, category_interest_counts, user_interest_ids)
         if score <= 0:
             continue
         scored.append((score, club))
@@ -1155,6 +1204,7 @@ def _build_recommended_clubs(
 
 def _build_recommended_events(
     category_interest_counts: dict,
+    user_interest_ids: set[uuid.UUID],
     *,
     limit: int,
     db: Session,
@@ -1166,7 +1216,7 @@ def _build_recommended_events(
         db.query(models.Event)
         .options(
             joinedload(models.Event.category),
-            joinedload(models.Event.club),
+            joinedload(models.Event.club).joinedload(models.Club.interest_links),
             joinedload(models.Event.registrations),
         )
         .filter(models.Event.is_active.is_(True))
@@ -1176,7 +1226,7 @@ def _build_recommended_events(
 
     scored: list[tuple[int, models.Event]] = []
     for event in events:
-        score = category_interest_counts.get(event.category_id, 0)
+        score = _score_event_for_user(event, category_interest_counts, user_interest_ids)
         if score <= 0:
             continue
         scored.append((score, event))
@@ -1667,9 +1717,8 @@ def list_recommended_clubs(
     db: Session = Depends(get_db),
 ):
     """
-    Recommend clubs to the logged-in user based on interest category overlap.
-    Score increases when a club's category matches user interests; multiple
-    interests in the same category increase the score further.
+    Recommend clubs to the logged-in user based on exact seeded interest links,
+    with category overlap as a fallback for broader discovery.
     """
     limit_value = _resolve_recommendation_limit(
         limit,
@@ -1677,7 +1726,13 @@ def list_recommended_clubs(
         max_limit=MAX_RECOMMENDED_CLUBS_LIMIT,
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
-    return _build_recommended_clubs(category_interest_counts, limit=limit_value, db=db)
+    user_interest_ids = _get_user_interest_ids(current_user.id, db)
+    return _build_recommended_clubs(
+        category_interest_counts,
+        user_interest_ids,
+        limit=limit_value,
+        db=db,
+    )
 
 
 @app.get("/clubs/{club_id}", response_model=ClubOut)
@@ -1926,8 +1981,8 @@ def list_recommended_events(
     db: Session = Depends(get_db),
 ):
     """
-    Recommend upcoming events to the logged-in user based on interest category overlap.
-    Only events with start_time > now are considered.
+    Recommend upcoming events to the logged-in user using event categories plus
+    the interests attached to each event's club. Only future events are considered.
     """
     limit_value = _resolve_recommendation_limit(
         limit,
@@ -1935,7 +1990,13 @@ def list_recommended_events(
         max_limit=MAX_RECOMMENDED_EVENTS_LIMIT,
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
-    return _build_recommended_events(category_interest_counts, limit=limit_value, db=db)
+    user_interest_ids = _get_user_interest_ids(current_user.id, db)
+    return _build_recommended_events(
+        category_interest_counts,
+        user_interest_ids,
+        limit=limit_value,
+        db=db,
+    )
 
 
 @app.get("/users/{user_id}/registered-events", response_model=list[RegisteredEventOut])
@@ -2324,10 +2385,21 @@ def get_recommendations(
         max_limit=MAX_RECOMMENDED_EVENTS_LIMIT,
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
+    user_interest_ids = _get_user_interest_ids(current_user.id, db)
 
     return RecommendationsOut(
-        clubs=_build_recommended_clubs(category_interest_counts, limit=club_limit_value, db=db),
-        events=_build_recommended_events(category_interest_counts, limit=event_limit_value, db=db),
+        clubs=_build_recommended_clubs(
+            category_interest_counts,
+            user_interest_ids,
+            limit=club_limit_value,
+            db=db,
+        ),
+        events=_build_recommended_events(
+            category_interest_counts,
+            user_interest_ids,
+            limit=event_limit_value,
+            db=db,
+        ),
     )
 
 
