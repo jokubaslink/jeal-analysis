@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Time, func, ForeignKey, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Time, func, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -167,6 +167,8 @@ class Club(Base):
     )
     city = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     website_url = Column(String(500), nullable=True)
     is_active = Column(Boolean, nullable=False, server_default="true")
     meeting_weekday = Column(Integer, nullable=True)
@@ -220,6 +222,8 @@ class Event(Base):
     end_time = Column(DateTime(timezone=True), nullable=True)
     city = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     is_active = Column(Boolean, nullable=False, server_default="true")
     is_online = Column(Boolean, nullable=False, server_default="false")
     registration_url = Column(String(500), nullable=True)

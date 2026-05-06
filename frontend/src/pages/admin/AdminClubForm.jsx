@@ -31,6 +31,8 @@ export default function AdminClubForm() {
   const [categoryId, setCategoryId] = useState("");
   const [city, setCity] = useState("");
   const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [meetingWeekday, setMeetingWeekday] = useState("");
   const [meetingStartTime, setMeetingStartTime] = useState("");
@@ -60,6 +62,8 @@ export default function AdminClubForm() {
           setCategoryId(club.category_id || "");
           setCity(club.city || "");
           setLocation(club.location || "");
+          setLatitude(club.latitude != null ? String(club.latitude) : "");
+          setLongitude(club.longitude != null ? String(club.longitude) : "");
           setWebsiteUrl(club.website_url || "");
           setMeetingWeekday(
             club.meeting_weekday === null || club.meeting_weekday === undefined
@@ -102,6 +106,8 @@ export default function AdminClubForm() {
       description,
       city,
       location,
+      latitude,
+      longitude,
       websiteUrl,
       meetingWeekday,
       meetingStartTime,
@@ -122,6 +128,8 @@ export default function AdminClubForm() {
       category_id: categoryId || null,
       city: trimmed.city,
       location: trimmed.location,
+      latitude: trimmed.latitude,
+      longitude: trimmed.longitude,
       website_url: trimmed.website_url,
       meeting_weekday: trimmed.meeting_weekday,
       meeting_start_time: trimmed.meeting_start_time,
@@ -267,6 +275,45 @@ export default function AdminClubForm() {
             aria-describedby={fieldErrors.location ? "club-location-error" : undefined}
           />
           <AdminFieldError id="club-location-error" message={fieldErrors.location} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-[length:var(--space-4)]">
+          <div className={fieldClass}>
+            <Label htmlFor="club-latitude">Latitude</Label>
+            <Input
+              id="club-latitude"
+              type="number"
+              step="any"
+              placeholder="e.g. 54.6872"
+              value={latitude}
+              onChange={(e) => {
+                setLatitude(e.target.value);
+                clearFieldError("latitude");
+              }}
+              aria-invalid={fieldErrors.latitude ? "true" : "false"}
+              aria-describedby={fieldErrors.latitude ? "club-latitude-error" : undefined}
+            />
+            <AdminFieldError id="club-latitude-error" message={fieldErrors.latitude} />
+            <p className={hintClass}>Optional. Between −90 and 90.</p>
+          </div>
+          <div className={fieldClass}>
+            <Label htmlFor="club-longitude">Longitude</Label>
+            <Input
+              id="club-longitude"
+              type="number"
+              step="any"
+              placeholder="e.g. 25.2798"
+              value={longitude}
+              onChange={(e) => {
+                setLongitude(e.target.value);
+                clearFieldError("longitude");
+              }}
+              aria-invalid={fieldErrors.longitude ? "true" : "false"}
+              aria-describedby={fieldErrors.longitude ? "club-longitude-error" : undefined}
+            />
+            <AdminFieldError id="club-longitude-error" message={fieldErrors.longitude} />
+            <p className={hintClass}>Optional. Between −180 and 180.</p>
+          </div>
         </div>
 
         <div className={fieldClass}>

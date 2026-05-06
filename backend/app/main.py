@@ -131,11 +131,27 @@ class ClubCreate(BaseModel):
     category_id: str | None = None
     city: str | None = Field(None, max_length=100)
     location: str | None = Field(None, max_length=255)
+    latitude: float | None = None
+    longitude: float | None = None
     website_url: str | None = Field(None, max_length=500)
     is_active: bool | None = None
     meeting_weekday: int | None = Field(None, ge=0, le=6)
     meeting_start_time: str | None = None
     meeting_end_time: str | None = None
+
+    @field_validator("latitude")
+    @classmethod
+    def latitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-90 <= v <= 90):
+            raise ValueError("latitude must be between -90 and 90.")
+        return v
+
+    @field_validator("longitude")
+    @classmethod
+    def longitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-180 <= v <= 180):
+            raise ValueError("longitude must be between -180 and 180.")
+        return v
 
     @field_validator("name")
     @classmethod
@@ -200,11 +216,27 @@ class ClubUpdate(BaseModel):
     category_id: str | None = None
     city: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     website_url: str | None = None
     is_active: bool | None = None
     meeting_weekday: int | None = Field(None, ge=0, le=6)
     meeting_start_time: str | None = None
     meeting_end_time: str | None = None
+
+    @field_validator("latitude")
+    @classmethod
+    def latitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-90 <= v <= 90):
+            raise ValueError("latitude must be between -90 and 90.")
+        return v
+
+    @field_validator("longitude")
+    @classmethod
+    def longitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-180 <= v <= 180):
+            raise ValueError("longitude must be between -180 and 180.")
+        return v
 
     @field_validator("name")
     @classmethod
@@ -278,6 +310,8 @@ class ClubOut(BaseModel):
     category_name: str | None = None
     city: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     website_url: str | None = None
     is_active: bool
     member_count: int
@@ -302,6 +336,8 @@ class RecommendedClubOut(BaseModel):
     category_name: str | None = None
     city: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     website_url: str | None = None
     is_active: bool
     member_count: int
@@ -373,9 +409,25 @@ class EventCreate(BaseModel):
     end_time: datetime | None = None
     city: str | None = Field(None, max_length=100)
     location: str | None = Field(None, max_length=255)
+    latitude: float | None = None
+    longitude: float | None = None
     is_online: bool | None = None
     registration_url: str | None = Field(None, max_length=500)
     image_url: str | None = Field(None, max_length=1000)
+
+    @field_validator("latitude")
+    @classmethod
+    def latitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-90 <= v <= 90):
+            raise ValueError("latitude must be between -90 and 90.")
+        return v
+
+    @field_validator("longitude")
+    @classmethod
+    def longitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-180 <= v <= 180):
+            raise ValueError("longitude must be between -180 and 180.")
+        return v
 
     @field_validator("title")
     @classmethod
@@ -444,9 +496,25 @@ class EventUpdate(BaseModel):
     end_time: datetime | None = None
     city: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     is_online: bool | None = None
     registration_url: str | None = None
     image_url: str | None = None
+
+    @field_validator("latitude")
+    @classmethod
+    def latitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-90 <= v <= 90):
+            raise ValueError("latitude must be between -90 and 90.")
+        return v
+
+    @field_validator("longitude")
+    @classmethod
+    def longitude_range(cls, v: float | None) -> float | None:
+        if v is not None and not (-180 <= v <= 180):
+            raise ValueError("longitude must be between -180 and 180.")
+        return v
 
     @field_validator("title")
     @classmethod
@@ -520,6 +588,8 @@ class EventOut(BaseModel):
     end_time: str | None = None
     city: str | None = None
     location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     is_active: bool
     is_online: bool
     registration_url: str | None = None
@@ -702,6 +772,8 @@ def _serialize_club(club: models.Club) -> ClubOut:
         category_name=club.category.name if club.category else None,
         city=club.city,
         location=club.location,
+        latitude=club.latitude,
+        longitude=club.longitude,
         website_url=club.website_url,
         is_active=club.is_active,
         member_count=_club_member_count(club),
@@ -1324,6 +1396,8 @@ def _serialize_event(event: models.Event) -> EventOut:
         end_time=event.end_time.isoformat() if event.end_time else None,
         city=event.city,
         location=event.location,
+        latitude=event.latitude,
+        longitude=event.longitude,
         is_active=event.is_active,
         is_online=event.is_online,
         registration_url=event.registration_url,
@@ -1626,6 +1700,8 @@ def create_club(
         category_id=category_uuid,
         city=payload.city,
         location=payload.location,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
         website_url=payload.website_url,
         is_active=payload.is_active if payload.is_active is not None else True,
         meeting_weekday=payload.meeting_weekday,
@@ -1792,6 +1868,10 @@ def update_club(
         club.city = data["city"]
     if "location" in data:
         club.location = data["location"]
+    if "latitude" in data:
+        club.latitude = data["latitude"]
+    if "longitude" in data:
+        club.longitude = data["longitude"]
     if "website_url" in data:
         club.website_url = data["website_url"]
     if "is_active" in data and data["is_active"] is not None:
@@ -1918,6 +1998,8 @@ def create_event(
         end_time=payload.end_time,
         city=payload.city,
         location=payload.location,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
         is_active=True,
         is_online=payload.is_online if payload.is_online is not None else False,
         registration_url=payload.registration_url,
@@ -2481,6 +2563,10 @@ def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_
         event.city = data["city"]
     if "location" in data:
         event.location = data["location"]
+    if "latitude" in data:
+        event.latitude = data["latitude"]
+    if "longitude" in data:
+        event.longitude = data["longitude"]
     if "is_online" in data and data["is_online"] is not None:
         event.is_online = data["is_online"]
     if "registration_url" in data:

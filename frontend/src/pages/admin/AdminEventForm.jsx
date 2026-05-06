@@ -27,6 +27,8 @@ export default function AdminEventForm() {
   const [endLocal, setEndLocal] = useState("");
   const [city, setCity] = useState("");
   const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [isOnline, setIsOnline] = useState(false);
   const [registrationUrl, setRegistrationUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -58,6 +60,8 @@ export default function AdminEventForm() {
           setEndLocal(isoToDatetimeLocal(event.end_time));
           setCity(event.city || "");
           setLocation(event.location || "");
+          setLatitude(event.latitude != null ? String(event.latitude) : "");
+          setLongitude(event.longitude != null ? String(event.longitude) : "");
           setIsOnline(Boolean(event.is_online));
           setRegistrationUrl(event.registration_url || "");
           setImageUrl(event.image_url || "");
@@ -96,6 +100,8 @@ export default function AdminEventForm() {
       endLocal,
       city,
       location,
+      latitude,
+      longitude,
       registrationUrl,
       imageUrl,
     });
@@ -117,6 +123,8 @@ export default function AdminEventForm() {
       end_time: endIso,
       city: trimmed.city,
       location: trimmed.location,
+      latitude: trimmed.latitude,
+      longitude: trimmed.longitude,
       is_online: isOnline,
       registration_url: trimmed.registration_url,
       image_url: trimmed.image_url,
@@ -319,6 +327,45 @@ export default function AdminEventForm() {
             aria-describedby={fieldErrors.location ? "event-location-error" : undefined}
           />
           <AdminFieldError id="event-location-error" message={fieldErrors.location} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-[length:var(--space-4)]">
+          <div className={fieldClass}>
+            <Label htmlFor="event-latitude">Latitude</Label>
+            <Input
+              id="event-latitude"
+              type="number"
+              step="any"
+              placeholder="e.g. 54.6872"
+              value={latitude}
+              onChange={(e) => {
+                setLatitude(e.target.value);
+                clearFieldError("latitude");
+              }}
+              aria-invalid={fieldErrors.latitude ? "true" : "false"}
+              aria-describedby={fieldErrors.latitude ? "event-latitude-error" : undefined}
+            />
+            <AdminFieldError id="event-latitude-error" message={fieldErrors.latitude} />
+            <p className={hintClass}>Optional. Between −90 and 90.</p>
+          </div>
+          <div className={fieldClass}>
+            <Label htmlFor="event-longitude">Longitude</Label>
+            <Input
+              id="event-longitude"
+              type="number"
+              step="any"
+              placeholder="e.g. 25.2798"
+              value={longitude}
+              onChange={(e) => {
+                setLongitude(e.target.value);
+                clearFieldError("longitude");
+              }}
+              aria-invalid={fieldErrors.longitude ? "true" : "false"}
+              aria-describedby={fieldErrors.longitude ? "event-longitude-error" : undefined}
+            />
+            <AdminFieldError id="event-longitude-error" message={fieldErrors.longitude} />
+            <p className={hintClass}>Optional. Between −180 and 180.</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-[length:var(--space-4)]">

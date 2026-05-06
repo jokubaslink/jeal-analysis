@@ -31,6 +31,8 @@ export function validateClubAdminForm({
   description,
   city,
   location,
+  latitude,
+  longitude,
   websiteUrl,
   meetingWeekday,
   meetingStartTime,
@@ -50,6 +52,32 @@ export function validateClubAdminForm({
 
   const locT = (location || "").trim();
   if (locT.length > 255) errors.location = "Venue / location must be at most 255 characters.";
+
+  let latValue = null;
+  const latRaw = (latitude || "").trim();
+  if (latRaw !== "") {
+    const parsed = parseFloat(latRaw);
+    if (isNaN(parsed)) {
+      errors.latitude = "Latitude must be a number.";
+    } else if (parsed < -90 || parsed > 90) {
+      errors.latitude = "Latitude must be between −90 and 90.";
+    } else {
+      latValue = parsed;
+    }
+  }
+
+  let lonValue = null;
+  const lonRaw = (longitude || "").trim();
+  if (lonRaw !== "") {
+    const parsed = parseFloat(lonRaw);
+    if (isNaN(parsed)) {
+      errors.longitude = "Longitude must be a number.";
+    } else if (parsed < -180 || parsed > 180) {
+      errors.longitude = "Longitude must be between −180 and 180.";
+    } else {
+      lonValue = parsed;
+    }
+  }
 
   const url = validateOptionalHttpUrl(websiteUrl, "Website URL");
   if (!url.ok) errors.website_url = url.error;
@@ -82,6 +110,8 @@ export function validateClubAdminForm({
       description: desc || null,
       city: cityT || null,
       location: locT || null,
+      latitude: latValue,
+      longitude: lonValue,
       website_url: url.ok ? url.value : null,
       meeting_weekday: weekday ? Number(weekday) : null,
       meeting_start_time: start || null,
@@ -98,6 +128,8 @@ export function validateEventAdminForm({
   endLocal,
   city,
   location,
+  latitude,
+  longitude,
   registrationUrl,
   imageUrl,
 }) {
@@ -133,6 +165,32 @@ export function validateEventAdminForm({
   const locT = (location || "").trim();
   if (locT.length > 255) errors.location = "Location must be at most 255 characters.";
 
+  let latValue = null;
+  const latRaw = (latitude || "").trim();
+  if (latRaw !== "") {
+    const parsed = parseFloat(latRaw);
+    if (isNaN(parsed)) {
+      errors.latitude = "Latitude must be a number.";
+    } else if (parsed < -90 || parsed > 90) {
+      errors.latitude = "Latitude must be between −90 and 90.";
+    } else {
+      latValue = parsed;
+    }
+  }
+
+  let lonValue = null;
+  const lonRaw = (longitude || "").trim();
+  if (lonRaw !== "") {
+    const parsed = parseFloat(lonRaw);
+    if (isNaN(parsed)) {
+      errors.longitude = "Longitude must be a number.";
+    } else if (parsed < -180 || parsed > 180) {
+      errors.longitude = "Longitude must be between −180 and 180.";
+    } else {
+      lonValue = parsed;
+    }
+  }
+
   const reg = validateOptionalHttpUrl(registrationUrl, "Registration URL");
   if (!reg.ok) errors.registration_url = reg.error;
 
@@ -148,6 +206,8 @@ export function validateEventAdminForm({
       description: desc || null,
       city: cityT || null,
       location: locT || null,
+      latitude: latValue,
+      longitude: lonValue,
       registration_url: reg.ok ? reg.value : null,
       image_url: img.ok ? img.value : null,
     },

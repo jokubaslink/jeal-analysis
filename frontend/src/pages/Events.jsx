@@ -258,6 +258,9 @@ export default function Events() {
 
   const filteredEvents = useMemo(() => {
     const list = events.filter((event) => {
+      if (registeredEventIds.has(String(event.id)) || skippedIds.has(event.id)) {
+        return false;
+      }
       if (!showPastEvents && isEventPast(event)) {
         return false;
       }
@@ -285,7 +288,7 @@ export default function Events() {
       const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
       return aTime - bTime;
     });
-  }, [events, selectedCategoryId, dateRange, showPastEvents]);
+  }, [events, registeredEventIds, skippedIds, selectedCategoryId, dateRange, showPastEvents]);
 
   const allLoadedArePast =
     events.length > 0 && events.every((event) => isEventPast(event));
@@ -447,8 +450,7 @@ export default function Events() {
 
     setFeedbackToast({ kind: "skip", eventId: event.id });
     setTimeout(() => {
-      const nextIndex = filteredEvents.findIndex((e) => e.id === event.id) + 1;
-      if (nextIndex < filteredEvents.length) scrollToCard(nextIndex);
+      scrollToCard(activeIndex);
     }, 250);
   };
 
@@ -680,9 +682,6 @@ export default function Events() {
                         }}
                         aria-hidden="true"
                       />
-                    ) : null}
-                    <div style={styles.cardOverlay} aria-hidden="true" />
-
                     <div style={styles.cardContent}>
                       <div style={styles.cardTopRow}>
                         <div style={styles.dateBadge} aria-label={`Event date ${dateLong}`}>
@@ -871,6 +870,7 @@ export default function Events() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -1145,16 +1145,6 @@ const styles = {
     letterSpacing: "0.04em",
     textTransform: "uppercase",
   },
-  likedBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "5px 10px",
-    borderRadius: "999px",
-    background: "rgba(255, 255, 255, 0.95)",
-    color: "#dc2626",
-    fontSize: "11px",
-    fontWeight: 800,
-  },
   cardMain: {
     display: "flex",
     flexDirection: "column",
@@ -1335,15 +1325,6 @@ const styles = {
     textDecoration: "none",
     transition: "transform 0.15s ease, background 0.15s ease",
   },
-  actionButtonLikedActive: {
-    background: "white",
-    color: "#dc2626",
-    transform: "scale(1.05)",
-  },
-  actionButtonSkippedActive: {
-    background: "rgba(0, 0, 0, 0.55)",
-    transform: "scale(0.95)",
-  },
   actionGlyph: {
     fontSize: "22px",
     lineHeight: 1,
@@ -1355,10 +1336,10 @@ const styles = {
     letterSpacing: "0.06em",
   },
   toast: {
-    position: "absolute",
+    position: "fixed",
     top: "50%",
     left: "50%",
-    transform: "translate(-50%, -50%) scale(1)",
+    transform: "translate(-50%, -50%)",
     padding: "14px 26px",
     borderRadius: "999px",
     fontSize: "20px",
