@@ -682,6 +682,8 @@ export default function Events() {
                         }}
                         aria-hidden="true"
                       />
+                    ) : null}
+                    <div style={styles.cardOverlay} aria-hidden="true" />
                     <div style={styles.cardContent}>
                       <div style={styles.cardTopRow}>
                         <div style={styles.dateBadge} aria-label={`Event date ${dateLong}`}>
