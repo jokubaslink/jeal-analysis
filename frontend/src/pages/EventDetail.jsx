@@ -8,7 +8,7 @@ import {
   subscribeToEventRegistrationChanges,
 } from "../lib/eventRegistrations.js";
 import { isEventPast } from "../lib/eventTime.js";
-import { Alert, Button, LoadingState } from "../components/ui/index.js";
+import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 
 function formatDate(value) {
   if (!value) return "Date to be announced";
@@ -44,6 +44,9 @@ export default function EventDetail() {
   const [feedbackSuccessMessage, setFeedbackSuccessMessage] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [similarAttendees, setSimilarAttendees] = useState([]);
+  const [isLoadingSimilarAttendees, setIsLoadingSimilarAttendees] = useState(true);
+  const [similarAttendeesErrorMessage, setSimilarAttendeesErrorMessage] = useState("");
 
   useEffect(() => {
     if (!eventId) return undefined;
@@ -175,6 +178,42 @@ export default function EventDetail() {
       ignore = true;
     };
   }, [eventId, userId]);
+
+  useEffect(() => {
+    if (!userId || !eventId) {
+      setSimilarAttendees([]);
+      setSimilarAttendeesErrorMessage("");
+      setIsLoadingSimilarAttendees(false);
+      return undefined;
+    }
+
+    let ignore = false;
+
+    const loadSimilarAttendees = async () => {
+      setIsLoadingSimilarAttendees(true);
+      setSimilarAttendeesErrorMessage("");
+      try {
+        const response = await apiFetch(`/events/${eventId}/similar-attendees?limit=6`);
+        if (!ignore) {
+          setSimilarAttendees(Array.isArray(response) ? response : []);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setSimilarAttendees([]);
+          setSimilarAttendeesErrorMessage(
+            error.message || "Could not load attendee suggestions."
+          );
+        }
+      } finally {
+        if (!ignore) setIsLoadingSimilarAttendees(false);
+      }
+    };
+
+    loadSimilarAttendees();
+    return () => {
+      ignore = true;
+    };
+  }, [eventId, isRegistered, userId]);
 
   useEffect(() => {
     if (!eventId) return undefined;
@@ -401,6 +440,79 @@ export default function EventDetail() {
         <p style={description}>
           {event.description || "No description provided yet."}
         </p>
+      </section>
+
+      <section style={panel}>
+        <h2 style={sectionTitle}>Attendees with similar interests</h2>
+        <p style={sectionIntro}>
+          See people attending this event who share your saved interests. Contact details are not shown.
+        </p>
+        {isLoadingSimilarAttendees ? (
+          <LoadingState
+            align="left"
+            title="Loading attendee suggestions"
+            description="Finding attendees with overlapping interests."
+          />
+        ) : !userId ? (
+          <EmptyState
+            align="left"
+            title="Log in to see attendee suggestions"
+            description="Suggestions are based on your saved interests and this event's attendee list."
+          />
+        ) : similarAttendeesErrorMessage ? (
+          <Alert variant="error">{similarAttendeesErrorMessage}</Alert>
+        ) : similarAttendees.length > 0 ? (
+          <div style={attendeeGrid}>
+            {similarAttendees.map((attendee, index) => {
+              const sharedInterests = Array.isArray(attendee.shared_interests)
+                ? attendee.shared_interests
+                : [];
+              const studyContext = [attendee.programme, attendee.faculty]
+                .filter(Boolean)
+                .join(" / ");
+
+              return (
+                <article
+                  key={`${attendee.name || "attendee"}-${attendee.registered_at || index}`}
+                  style={attendeeCard}
+                >
+                  <div style={attendeeAvatar} aria-hidden="true">
+                    {(attendee.name || "Student").trim().charAt(0).toUpperCase()}
+                  </div>
+                  <div style={attendeeContent}>
+                    <h3 style={attendeeName}>{attendee.name || "Campus member"}</h3>
+                    <p style={attendeeMeta}>
+                      {studyContext || "Study details not provided"}
+                    </p>
+                    <p style={attendeeMatch}>
+                      {attendee.shared_interest_count === 1
+                        ? "1 shared interest"
+                        : `${attendee.shared_interest_count || sharedInterests.length} shared interests`}
+                    </p>
+                    {sharedInterests.length > 0 ? (
+                      <div style={chipWrap}>
+                        {sharedInterests.slice(0, 4).map((interest) => (
+                          <span
+                            key={`${attendee.name || index}-${interest}`}
+                            style={sharedInterestChip}
+                          >
+                            {interest}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            align="left"
+            title="No similar attendees yet"
+            description="When other opted-in attendees share your interests, they will appear here."
+          />
+        )}
       </section>
 
       <section style={panel}>
@@ -713,10 +825,94 @@ const sectionTitle = {
   color: "#111827",
 };
 
+const sectionIntro = {
+  margin: "0 0 16px 0",
+  fontSize: "14px",
+  lineHeight: 1.5,
+  color: "#4b5563",
+};
+
 const description = {
   margin: 0,
   fontSize: "15px",
   lineHeight: 1.6,
   color: "#374151",
   whiteSpace: "pre-wrap",
+};
+
+const attendeeGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: "14px",
+};
+
+const attendeeCard = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "14px",
+  padding: "16px",
+  borderRadius: "16px",
+  border: "1px solid #e5e7eb",
+  background: "linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)",
+};
+
+const attendeeAvatar = {
+  width: "42px",
+  height: "42px",
+  borderRadius: "999px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  background: "#111827",
+  color: "white",
+  fontSize: "16px",
+  fontWeight: 800,
+};
+
+const attendeeContent = {
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const attendeeName = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "17px",
+  fontWeight: 700,
+};
+
+const attendeeMeta = {
+  margin: 0,
+  color: "#4b5563",
+  fontSize: "13px",
+  lineHeight: 1.4,
+};
+
+const attendeeMatch = {
+  margin: "4px 0 0 0",
+  color: "#047857",
+  fontSize: "13px",
+  fontWeight: 800,
+};
+
+const chipWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px",
+  marginTop: "6px",
+};
+
+const sharedInterestChip = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "5px 10px",
+  borderRadius: "999px",
+  background: "#ecfdf5",
+  border: "1px solid #a7f3d0",
+  color: "#065f46",
+  fontSize: "12px",
+  fontWeight: 700,
 };

@@ -38,6 +38,9 @@ export default function Dashboard() {
   const [joinedClubs, setJoinedClubs] = useState([]);
   const [joinedClubsErrorMessage, setJoinedClubsErrorMessage] = useState("");
   const [pendingLeaveClubId, setPendingLeaveClubId] = useState(null);
+  const [similarUsers, setSimilarUsers] = useState([]);
+  const [isLoadingSimilarUsers, setIsLoadingSimilarUsers] = useState(true);
+  const [similarUsersErrorMessage, setSimilarUsersErrorMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -50,7 +53,7 @@ export default function Dashboard() {
             /* pending quiz/selections can sync on next visit */
           }
 
-          const me = await apiFetch(`/users/${userId}`);
+          const me = await apiFetch("/me");
           if (!ignore) {
             setProfile(me);
             setFormValues({
@@ -64,6 +67,8 @@ export default function Dashboard() {
               grade_year: me.grade_year ?? "",
               age_group: me.age_group || "",
               city: me.city || "",
+              show_in_attendee_suggestions:
+                me.show_in_attendee_suggestions !== false,
             });
           }
 
@@ -91,6 +96,17 @@ export default function Dashboard() {
             recommendedEventsPayload = [];
           }
 
+          let similarUsersPayload = [];
+          let similarUsersErr = "";
+          try {
+            const raw = await apiFetch("/users/similar?limit=6");
+            similarUsersPayload = Array.isArray(raw) ? raw : [];
+          } catch (error) {
+            similarUsersPayload = [];
+            similarUsersErr =
+              error.message || "Could not load similar people.";
+          }
+
           let registeredEventsPayload = [];
           let registeredEventsError = "";
           try {
@@ -116,6 +132,8 @@ export default function Dashboard() {
             setUserInterests(interestsPayload);
             setRecommendedClubs(recommendedClubsPayload);
             setRecommendedEvents(recommendedEventsPayload);
+            setSimilarUsers(similarUsersPayload);
+            setSimilarUsersErrorMessage(similarUsersErr);
             setRegisteredEvents(registeredEventsPayload);
             setRegisteredEventsErrorMessage(registeredEventsError);
             setJoinedClubs(joinedClubsPayload);
@@ -126,6 +144,8 @@ export default function Dashboard() {
             setUserInterests([]);
             setRecommendedClubs([]);
             setRecommendedEvents([]);
+            setSimilarUsers([]);
+            setSimilarUsersErrorMessage("");
             setRegisteredEvents([]);
             setRegisteredEventsErrorMessage("");
             setJoinedClubs([]);
@@ -147,6 +167,7 @@ export default function Dashboard() {
           setIsLoadingInterests(false);
           setIsLoadingRecommendedClubs(false);
           setIsLoadingRecommendedEvents(false);
+          setIsLoadingSimilarUsers(false);
           setIsLoadingRegisteredEvents(false);
         }
       }
@@ -281,10 +302,10 @@ export default function Dashboard() {
   };
 
   const handleProfileInputChange = (event) => {
-    const { name, value } = event.target;
+    const { checked, name, type, value } = event.target;
     setFormValues((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -307,6 +328,8 @@ export default function Dashboard() {
         grade_year: profile.grade_year ?? "",
         age_group: profile.age_group || "",
         city: profile.city || "",
+        show_in_attendee_suggestions:
+          profile.show_in_attendee_suggestions !== false,
       });
     }
     setProfileSuccessMessage("");
@@ -349,7 +372,18 @@ export default function Dashboard() {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-      setProfile(updated);
+      const updatedSettings = await apiFetch("/me/attendee-suggestion-settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          show_in_attendee_suggestions:
+            formValues.show_in_attendee_suggestions !== false,
+        }),
+      });
+      setProfile({
+        ...updated,
+        show_in_attendee_suggestions:
+          updatedSettings.show_in_attendee_suggestions !== false,
+      });
       setProfileSuccessMessage("Profile updated successfully.");
       setIsEditingProfile(false);
     } catch (error) {
@@ -495,6 +529,93 @@ export default function Dashboard() {
         <section style={card}>
           <div style={profileHeader}>
             <div>
+              <h2 style={sectionTitle}>People with similar interests</h2>
+              <p style={profileSubtext}>
+                Meet students who share your saved interests. Only limited profile details are shown.
+              </p>
+            </div>
+          </div>
+
+          {isLoadingSimilarUsers ? (
+            <LoadingState
+              align="left"
+              title="Loading people suggestions"
+              description="Finding students with overlapping interests."
+            />
+          ) : !userId ? (
+            <EmptyState
+              align="left"
+              title="Log in to see people suggestions"
+              description="Your similar-interest suggestions will appear here after sign in."
+            />
+          ) : similarUsersErrorMessage ? (
+            <Alert variant="error">{similarUsersErrorMessage}</Alert>
+          ) : !hasSavedInterests ? (
+            <EmptyState
+              align="left"
+              title="No people suggestions yet"
+              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
+              action={interestsEmptyAction}
+            />
+          ) : similarUsers.length > 0 ? (
+            <div style={similarPeopleGrid}>
+              {similarUsers.map((person, index) => {
+                const sharedInterests = Array.isArray(person.shared_interests)
+                  ? person.shared_interests
+                  : [];
+                const studyContext = [person.programme, person.faculty]
+                  .filter(Boolean)
+                  .join(" / ");
+
+                return (
+                  <article
+                    key={`${person.name || "similar-person"}-${index}`}
+                    style={similarPersonCard}
+                  >
+                    <div style={similarPersonAvatar} aria-hidden="true">
+                      {(person.name || "Student").trim().charAt(0).toUpperCase()}
+                    </div>
+                    <div style={similarPersonContent}>
+                      <h3 style={similarPersonName}>
+                        {person.name || "Campus member"}
+                      </h3>
+                      <p style={similarPersonMeta}>
+                        {studyContext || "Study details not provided"}
+                      </p>
+                      <p style={similarPersonMatch}>
+                        {person.shared_interest_count === 1
+                          ? "1 shared interest"
+                          : `${person.shared_interest_count || sharedInterests.length} shared interests`}
+                      </p>
+                      {sharedInterests.length > 0 ? (
+                        <div style={chipWrap}>
+                          {sharedInterests.slice(0, 4).map((interest) => (
+                            <span
+                              key={`${person.name || index}-${interest}`}
+                              style={sharedInterestChip}
+                            >
+                              {interest}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              align="left"
+              title="No similar people found yet"
+              description="As more students save interests, you will see people with overlapping topics here."
+            />
+          )}
+        </section>
+
+        <section style={card}>
+          <div style={profileHeader}>
+            <div>
               <h2 style={sectionTitle}>Your profile</h2>
               <p style={profileSubtext}>Keep your details up to date for better recommendations.</p>
             </div>
@@ -626,6 +747,23 @@ export default function Dashboard() {
                     />
                   </dd>
                 </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Event attendee suggestions</dt>
+                  <dd style={detailsValue}>
+                    <label style={checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        name="show_in_attendee_suggestions"
+                        checked={formValues.show_in_attendee_suggestions !== false}
+                        onChange={handleProfileInputChange}
+                        disabled={isSavingProfile}
+                      />
+                      <span>
+                        Show my limited profile to people attending the same event
+                      </span>
+                    </label>
+                  </dd>
+                </div>
               </dl>
               <div style={actionsRow}>
                 <button
@@ -685,6 +823,14 @@ export default function Dashboard() {
                 <div style={detailsRow}>
                   <dt style={detailsLabel}>Age group</dt>
                   <dd style={detailsValue}>{fieldOrFallback(profile.age_group)}</dd>
+                </div>
+                <div style={detailsRow}>
+                  <dt style={detailsLabel}>Event attendee suggestions</dt>
+                  <dd style={detailsValue}>
+                    {profile.show_in_attendee_suggestions === false
+                      ? "Hidden from attendee suggestions"
+                      : "Shown with limited profile details"}
+                  </dd>
                 </div>
               </dl>
               <div style={actionsRow}>
@@ -1105,6 +1251,15 @@ const readonlyValue = {
   border: "1px solid #e5e7eb",
 };
 
+const checkboxLabel = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "10px",
+  color: "#111827",
+  fontSize: "14px",
+  lineHeight: 1.45,
+};
+
 const interestStack = {
   display: "flex",
   flexDirection: "column",
@@ -1190,6 +1345,76 @@ const categoryTag = {
   background: "#eef2ff",
   border: "1px solid #c7d2fe",
   color: "#3730a3",
+  fontSize: "12px",
+  fontWeight: 700,
+};
+
+const similarPeopleGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: "14px",
+};
+
+const similarPersonCard = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "14px",
+  padding: "16px",
+  borderRadius: "16px",
+  border: "1px solid #e5e7eb",
+  background: "linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)",
+};
+
+const similarPersonAvatar = {
+  width: "42px",
+  height: "42px",
+  borderRadius: "999px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  background: "#111827",
+  color: "white",
+  fontSize: "16px",
+  fontWeight: 800,
+};
+
+const similarPersonContent = {
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const similarPersonName = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "17px",
+  fontWeight: 700,
+};
+
+const similarPersonMeta = {
+  margin: 0,
+  color: "#4b5563",
+  fontSize: "13px",
+  lineHeight: 1.4,
+};
+
+const similarPersonMatch = {
+  margin: "4px 0 0 0",
+  color: "#047857",
+  fontSize: "13px",
+  fontWeight: 800,
+};
+
+const sharedInterestChip = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "5px 10px",
+  borderRadius: "999px",
+  background: "#ecfdf5",
+  border: "1px solid #a7f3d0",
+  color: "#065f46",
   fontSize: "12px",
   fontWeight: 700,
 };

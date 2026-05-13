@@ -101,6 +101,7 @@ class UserOut(BaseModel):
 
 class UserMeOut(UserOut):
     is_admin: bool
+    show_in_attendee_suggestions: bool
 
 
 class UserUpdate(BaseModel):
@@ -113,6 +114,10 @@ class UserUpdate(BaseModel):
     grade_year: int | None = None
     age_group: str | None = None
     city: str | None = None
+
+
+class AttendeeSuggestionSettingsUpdate(BaseModel):
+    show_in_attendee_suggestions: bool
 
 
 class InterestCategoryOut(BaseModel):
@@ -714,6 +719,18 @@ class SimilarUserOut(BaseModel):
     shared_interest_count: int
 
 
+class SimilarUserPublicOut(BaseModel):
+    name: str | None = None
+    programme: str | None = None
+    faculty: str | None = None
+    shared_interest_count: int
+    shared_interests: list[str]
+
+
+class EventAttendeeSuggestionOut(SimilarUserPublicOut):
+    registered_at: str
+
+
 def get_db() -> Session:
     db = SessionLocal()
     try:
@@ -778,6 +795,7 @@ def _user_to_me_out(user: models.User) -> UserMeOut:
         age_group=user.age_group,
         city=user.city,
         is_admin=bool(user.is_admin),
+        show_in_attendee_suggestions=bool(user.show_in_attendee_suggestions),
     )
 
 
@@ -1141,6 +1159,46 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @app.get("/me", response_model=UserMeOut)
 def get_me(current_user: models.User = Depends(get_current_user)):
     return _user_to_me_out(current_user)
+
+
+@app.patch("/me/attendee-suggestion-settings", response_model=UserMeOut)
+def update_attendee_suggestion_settings(
+    payload: AttendeeSuggestionSettingsUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.show_in_attendee_suggestions = payload.show_in_attendee_suggestions
+    db.commit()
+    db.refresh(current_user)
+    return _user_to_me_out(current_user)
+
+
+@app.get("/users/similar", response_model=list[SimilarUserPublicOut])
+def get_similar_users_for_current_user(
+    limit: int | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns privacy-safe similar user suggestions for the logged-in user.
+    Only display name, study context, and shared interests are exposed.
+    """
+    limit_value = _resolve_recommendation_limit(
+        limit,
+        default_limit=DEFAULT_SIMILAR_USERS_LIMIT,
+        max_limit=MAX_SIMILAR_USERS_LIMIT,
+    )
+    matches = _build_similar_user_matches(current_user, limit=limit_value, db=db)
+    return [
+        SimilarUserPublicOut(
+            name=_display_user_name(user),
+            programme=user.programme,
+            faculty=user.faculty,
+            shared_interest_count=shared_count,
+            shared_interests=shared_interests,
+        )
+        for _score, user, shared_count, shared_interests in matches
+    ]
 
 
 def _require_self_or_admin(target_user_id: str, current_user: models.User) -> None:
@@ -1567,12 +1625,6 @@ def _get_event_or_404(
     return event
 
 
-class SimilarUserPublicOut(BaseModel):
-    name: str | None = None
-    programme: str | None = None
-    faculty: str | None = None
-
-
 def _build_interest_vector(interest_ids: set, ordered_interest_ids: list) -> list[int]:
     """Build binary vector: 1 if user has that interest, 0 otherwise."""
     return [1 if iid in interest_ids else 0 for iid in ordered_interest_ids]
@@ -1588,8 +1640,173 @@ def _cosine_similarity(a: list[int], b: list[int]) -> float:
     return min(1.0, max(0.0, dot / (norm_a * norm_b)))
 
 
+def _build_similar_user_matches(
+    current_user: models.User,
+    *,
+    limit: int,
+    db: Session,
+) -> list[tuple[float, models.User, int, list[str]]]:
+    interest_rows = (
+        db.query(models.Interest.id, models.Interest.name)
+        .order_by(models.Interest.id)
+        .all()
+    )
+    ordered_interest_ids = [row.id for row in interest_rows]
+    interest_name_by_id = {row.id: row.name for row in interest_rows}
+    if not ordered_interest_ids:
+        return []
+
+    current_interest_ids = _get_user_interest_ids(current_user.id, db)
+    if not current_interest_ids:
+        return []
+
+    current_vector = _build_interest_vector(current_interest_ids, ordered_interest_ids)
+
+    all_other_links = (
+        db.query(models.UserInterest.user_id, models.UserInterest.interest_id)
+        .filter(models.UserInterest.user_id != current_user.id)
+        .all()
+    )
+    user_interest_sets: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for user_id, interest_id in all_other_links:
+        user_interest_sets.setdefault(user_id, set()).add(interest_id)
+
+    other_users = (
+        db.query(models.User)
+        .filter(models.User.id != current_user.id)
+        .filter(models.User.is_active.is_(True))
+        .all()
+    )
+
+    current_faculty = current_user.faculty.strip() if current_user.faculty else None
+    current_programme = current_user.programme.strip() if current_user.programme else None
+
+    matches: list[tuple[float, models.User, int, list[str]]] = []
+    for user in other_users:
+        other_interest_ids = user_interest_sets.get(user.id, set())
+        shared_interest_ids = current_interest_ids.intersection(other_interest_ids)
+        if not shared_interest_ids:
+            continue
+
+        other_vector = _build_interest_vector(other_interest_ids, ordered_interest_ids)
+        score = _cosine_similarity(current_vector, other_vector)
+
+        user_faculty = user.faculty.strip() if user.faculty else None
+        user_programme = user.programme.strip() if user.programme else None
+        if current_faculty and user_faculty and current_faculty == user_faculty:
+            score += FACULTY_BOOST
+        if current_programme and user_programme and current_programme == user_programme:
+            score += PROGRAMME_BOOST
+        score = min(1.0, score)
+
+        shared_interests = [
+            interest_name_by_id[interest_id]
+            for interest_id in ordered_interest_ids
+            if interest_id in shared_interest_ids
+        ]
+        matches.append((score, user, len(shared_interests), shared_interests))
+
+    matches.sort(
+        key=lambda item: (
+            -item[0],
+            -item[2],
+            (_display_user_name(item[1]) or "").lower(),
+        )
+    )
+    return matches[:limit]
+
+
+def _build_similar_event_attendee_matches(
+    event: models.Event,
+    current_user: models.User,
+    *,
+    limit: int,
+    db: Session,
+) -> list[tuple[float, models.UserEventRegistration, int, list[str]]]:
+    interest_rows = (
+        db.query(models.Interest.id, models.Interest.name)
+        .order_by(models.Interest.id)
+        .all()
+    )
+    ordered_interest_ids = [row.id for row in interest_rows]
+    interest_name_by_id = {row.id: row.name for row in interest_rows}
+    if not ordered_interest_ids:
+        return []
+
+    current_interest_ids = _get_user_interest_ids(current_user.id, db)
+    if not current_interest_ids:
+        return []
+
+    registrations = (
+        db.query(models.UserEventRegistration)
+        .options(joinedload(models.UserEventRegistration.user))
+        .join(models.User, models.UserEventRegistration.user_id == models.User.id)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .filter(models.UserEventRegistration.user_id != current_user.id)
+        .filter(models.User.is_active.is_(True))
+        .filter(models.User.show_in_attendee_suggestions.is_(True))
+        .all()
+    )
+    if not registrations:
+        return []
+
+    attendee_user_ids = [registration.user_id for registration in registrations]
+    attendee_interest_links = (
+        db.query(models.UserInterest.user_id, models.UserInterest.interest_id)
+        .filter(models.UserInterest.user_id.in_(attendee_user_ids))
+        .all()
+    )
+    user_interest_sets: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for user_id, interest_id in attendee_interest_links:
+        user_interest_sets.setdefault(user_id, set()).add(interest_id)
+
+    current_vector = _build_interest_vector(current_interest_ids, ordered_interest_ids)
+    current_faculty = current_user.faculty.strip() if current_user.faculty else None
+    current_programme = current_user.programme.strip() if current_user.programme else None
+
+    matches: list[tuple[float, models.UserEventRegistration, int, list[str]]] = []
+    for registration in registrations:
+        attendee = registration.user
+        attendee_interest_ids = user_interest_sets.get(registration.user_id, set())
+        shared_interest_ids = current_interest_ids.intersection(attendee_interest_ids)
+        if not shared_interest_ids:
+            continue
+
+        attendee_vector = _build_interest_vector(attendee_interest_ids, ordered_interest_ids)
+        score = _cosine_similarity(current_vector, attendee_vector)
+
+        attendee_faculty = attendee.faculty.strip() if attendee.faculty else None
+        attendee_programme = attendee.programme.strip() if attendee.programme else None
+        if current_faculty and attendee_faculty and current_faculty == attendee_faculty:
+            score += FACULTY_BOOST
+        if current_programme and attendee_programme and current_programme == attendee_programme:
+            score += PROGRAMME_BOOST
+        score = min(1.0, score)
+
+        shared_interests = [
+            interest_name_by_id[interest_id]
+            for interest_id in ordered_interest_ids
+            if interest_id in shared_interest_ids
+        ]
+        matches.append((score, registration, len(shared_interests), shared_interests))
+
+    matches.sort(
+        key=lambda item: (
+            -item[0],
+            -item[2],
+            (_display_user_name(item[1].user) or "").lower(),
+            item[1].created_at,
+        )
+    )
+    return matches[:limit]
+
+
 @app.get("/users/{user_id}/similar-users", response_model=list[SimilarUserOut])
-def get_similar_users(user_id: str, db: Session = Depends(get_db)):
+def get_similar_users(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
         user_uuid = uuid.UUID(user_id)
     except ValueError:
@@ -1597,6 +1814,7 @@ def get_similar_users(user_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid user ID format.",
         )
+    _require_self_or_admin(str(user_uuid), current_user)
 
     current_user = db.query(models.User).filter(models.User.id == user_uuid).first()
     if not current_user:
@@ -1605,152 +1823,24 @@ def get_similar_users(user_id: str, db: Session = Depends(get_db)):
             detail="User not found",
         )
 
-    # Canonical ordering of all interests (for consistent vectors)
-    ordered_interest_ids = [
-        row.id for row in db.query(models.Interest.id).order_by(models.Interest.id).all()
-    ]
-    if not ordered_interest_ids:
-        return []
-
-    current_interest_ids = {
-        row.interest_id
-        for row in db.query(models.UserInterest.interest_id).filter(
-            models.UserInterest.user_id == user_uuid
-        ).all()
-    }
-    current_vector = _build_interest_vector(current_interest_ids, ordered_interest_ids)
-    if sum(current_vector) == 0:
-        return []
-
-    # All other users' interest sets (exclude current user)
-    all_other_links = (
-        db.query(models.UserInterest.user_id, models.UserInterest.interest_id)
-        .filter(models.UserInterest.user_id != user_uuid)
-        .all()
+    matches = _build_similar_user_matches(
+        current_user,
+        limit=MAX_SIMILAR_USERS_LIMIT,
+        db=db,
     )
-    user_interest_sets: dict = {}
-    for uid, iid in all_other_links:
-        user_interest_sets.setdefault(uid, set()).add(iid)
-
-    # All other users (exclude current); include users with no interests (cosine = 0)
-    all_other_users = (
-        db.query(models.User).filter(models.User.id != user_uuid).all()
-    )
-    other_user_ids = [u.id for u in all_other_users]
-    user_by_id = {u.id: u for u in all_other_users}
-
-    current_faculty = current_user.faculty
-    current_programme = current_user.programme
-
     results = []
-    for uid in other_user_ids:
-        u = user_by_id.get(uid)
-        if not u:
-            continue
-        other_interest_ids = user_interest_sets.get(uid, set())
-        other_vector = _build_interest_vector(other_interest_ids, ordered_interest_ids)
-        cosine = _cosine_similarity(current_vector, other_vector)
-        score = cosine
-        if current_faculty and u.faculty and current_faculty.strip() == u.faculty.strip():
-            score += FACULTY_BOOST
-        if current_programme and u.programme and current_programme.strip() == u.programme.strip():
-            score += PROGRAMME_BOOST
-        score = min(1.0, score)
-        shared = sum(1 for a, b in zip(current_vector, other_vector) if a == b == 1)
+    for score, user, shared_count, _shared_interests in matches:
         results.append(
             SimilarUserOut(
-                user_id=str(u.id),
+                user_id=str(user.id),
                 score=round(score, 4),
-                faculty=u.faculty,
-                programme=u.programme,
-                shared_interest_count=shared,
+                faculty=user.faculty,
+                programme=user.programme,
+                shared_interest_count=shared_count,
             )
         )
 
-    results.sort(key=lambda x: x.score, reverse=True)
     return results
-
-
-@app.get("/users/similar", response_model=list[SimilarUserPublicOut])
-def get_similar_users_for_current_user(
-    limit: int | None = Query(default=None),
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Returns similar users for the logged-in user.
-    Privacy-safe fields only: name, programme, faculty.
-    """
-    if limit is None:
-        limit_value = DEFAULT_SIMILAR_USERS_LIMIT
-    else:
-        if limit <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="limit must be a positive integer.",
-            )
-        limit_value = min(limit, MAX_SIMILAR_USERS_LIMIT)
-
-    user_uuid = current_user.id
-
-    # Canonical ordering of all interests (for consistent vectors)
-    ordered_interest_ids = [
-        row.id for row in db.query(models.Interest.id).order_by(models.Interest.id).all()
-    ]
-    if not ordered_interest_ids:
-        return []
-
-    current_interest_ids = {
-        row.interest_id
-        for row in db.query(models.UserInterest.interest_id).filter(
-            models.UserInterest.user_id == user_uuid
-        ).all()
-    }
-    current_vector = _build_interest_vector(current_interest_ids, ordered_interest_ids)
-    if sum(current_vector) == 0:
-        return []
-
-    # All other users' interest sets (exclude current user)
-    all_other_links = (
-        db.query(models.UserInterest.user_id, models.UserInterest.interest_id)
-        .filter(models.UserInterest.user_id != user_uuid)
-        .all()
-    )
-    user_interest_sets: dict = {}
-    for uid, iid in all_other_links:
-        user_interest_sets.setdefault(uid, set()).add(iid)
-
-    # All other users (exclude current); include users with no interests (cosine = 0)
-    all_other_users = db.query(models.User).filter(models.User.id != user_uuid).all()
-    user_by_id = {u.id: u for u in all_other_users}
-
-    current_faculty = current_user.faculty
-    current_programme = current_user.programme
-
-    scored: list[tuple[float, models.User]] = []
-    for uid, u in user_by_id.items():
-        other_interest_ids = user_interest_sets.get(uid, set())
-        other_vector = _build_interest_vector(other_interest_ids, ordered_interest_ids)
-        cosine = _cosine_similarity(current_vector, other_vector)
-        score = cosine
-        if current_faculty and u.faculty and current_faculty.strip() == u.faculty.strip():
-            score += FACULTY_BOOST
-        if current_programme and u.programme and current_programme.strip() == u.programme.strip():
-            score += PROGRAMME_BOOST
-        score = min(1.0, score)
-        scored.append((score, u))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:limit_value]
-
-    return [
-        SimilarUserPublicOut(
-            name=_display_user_name(u),
-            programme=u.programme,
-            faculty=u.faculty,
-        )
-        for _score, u in top
-    ]
 
 
 @app.get("/interest-categories", response_model=list[InterestCategoryOut])
@@ -2313,6 +2403,38 @@ def get_event_attendance(
         attended=attendance is not None,
         checked_in_at=attendance.checked_in_at.isoformat() if attendance else None,
     )
+
+
+@app.get("/events/{event_id}/similar-attendees", response_model=list[EventAttendeeSuggestionOut])
+def get_event_similar_attendees(
+    event_id: str,
+    limit: int | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db, active_only=True)
+    limit_value = _resolve_recommendation_limit(
+        limit,
+        default_limit=DEFAULT_SIMILAR_USERS_LIMIT,
+        max_limit=MAX_SIMILAR_USERS_LIMIT,
+    )
+    matches = _build_similar_event_attendee_matches(
+        event,
+        current_user,
+        limit=limit_value,
+        db=db,
+    )
+    return [
+        EventAttendeeSuggestionOut(
+            name=_display_user_name(registration.user),
+            programme=registration.user.programme,
+            faculty=registration.user.faculty,
+            shared_interest_count=shared_count,
+            shared_interests=shared_interests,
+            registered_at=registration.created_at.isoformat(),
+        )
+        for _score, registration, shared_count, shared_interests in matches
+    ]
 
 
 @app.get("/admin/events/{event_id}/check-in-token", response_model=CheckInTokenOut)
