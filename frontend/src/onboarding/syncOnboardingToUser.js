@@ -1,43 +1,27 @@
 import {
   clearOnboardingQuizAnswers,
   clearOnboardingSelections,
-  readOnboardingQuizAnswers,
   readOnboardingSelections,
 } from "./storage.js";
-import { mergeQuizAndManualInterestIds } from "./quizEngine.js";
 
 /**
- * Persists pending onboarding data (manual interest picks + quiz answers mapped to interests)
- * to the authenticated user. Call after login / registration flow.
+ * Persists reviewed onboarding interests to the authenticated user.
+ * Quiz answers are not converted here because users can remove suggested
+ * interests during review, and those adjustments must remain authoritative.
  */
 export async function syncPendingOnboardingToUser(userId, apiFetch) {
   const pendingSelections = readOnboardingSelections();
-  const quizAnswers = readOnboardingQuizAnswers();
 
-  if (pendingSelections.length === 0 && quizAnswers.length === 0) {
+  if (pendingSelections.length === 0) {
     return { synced: false, interestCount: 0 };
   }
 
-  const [cats, ints] = await Promise.all([
-    apiFetch("/interest-categories"),
-    apiFetch("/interests"),
-  ]);
-
-  const mergedIds = mergeQuizAndManualInterestIds(
-    quizAnswers,
-    pendingSelections,
-    Array.isArray(cats) ? cats : [],
-    Array.isArray(ints) ? ints : []
-  );
-
-  if (mergedIds.length === 0) {
-    return { synced: false, interestCount: 0 };
-  }
+  const finalIds = [...new Set(pendingSelections)];
 
   await apiFetch(`/users/${userId}/interests`, {
     method: "PUT",
     body: JSON.stringify({
-      items: mergedIds.map((interestId) => ({
+      items: finalIds.map((interestId) => ({
         interest_id: interestId,
         level: null,
       })),
@@ -47,5 +31,5 @@ export async function syncPendingOnboardingToUser(userId, apiFetch) {
   clearOnboardingSelections();
   clearOnboardingQuizAnswers();
 
-  return { synced: true, interestCount: mergedIds.length };
+  return { synced: true, interestCount: finalIds.length };
 }

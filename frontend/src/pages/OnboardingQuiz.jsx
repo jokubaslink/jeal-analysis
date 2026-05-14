@@ -33,6 +33,7 @@ export default function OnboardingQuiz() {
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [interestToAddId, setInterestToAddId] = useState("");
   const [hasLoadedSavedSelections, setHasLoadedSavedSelections] = useState(false);
   const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState(() =>
     hydrateQuizAnswersFromStorage()
@@ -40,7 +41,7 @@ export default function OnboardingQuiz() {
   const [quizPhase, setQuizPhase] = useState(() => {
     const saved = hydrateQuizAnswersFromStorage();
     return Object.keys(saved).length >= ONBOARDING_QUIZ_QUESTIONS.length
-      ? "interests"
+      ? "review"
       : "quiz";
   });
   const [quizQuestionStep, setQuizQuestionStep] = useState(0);
@@ -160,11 +161,6 @@ export default function OnboardingQuiz() {
 
   const currentCategory = steps[currentStep] ?? null;
   const totalSteps = steps.length;
-  const progressValue = totalSteps > 0 ? ((currentStep + 1) / totalSteps) * 100 : 0;
-  const currentStepSelections = currentCategory
-    ? currentCategory.items.filter((interest) => selectedIds.has(interest.id))
-    : [];
-  const currentStepHasSelection = currentStepSelections.length > 0;
   const isLastStep = totalSteps > 0 && currentStep === totalSteps - 1;
   const hasAnySelection = selectedIds.size > 0;
   const answeredOptionIds = Object.values(quizAnswersByQuestionId);
@@ -181,6 +177,27 @@ export default function OnboardingQuiz() {
       ),
     [categories, interests, quizCategoryScores]
   );
+  const selectedInterests = useMemo(
+    () => interests.filter((interest) => selectedIds.has(interest.id)),
+    [interests, selectedIds]
+  );
+  const interestsAvailableToAdd = useMemo(
+    () => interests.filter((interest) => !selectedIds.has(interest.id)),
+    [interests, selectedIds]
+  );
+
+  useEffect(() => {
+    if (
+      quizPhase !== "review" ||
+      isLoading ||
+      selectedIds.size > 0 ||
+      suggestedInterestIds.length === 0
+    ) {
+      return;
+    }
+
+    setSelectedIds(new Set(suggestedInterestIds));
+  }, [isLoading, quizPhase, selectedIds.size, suggestedInterestIds]);
 
   const handleToggleInterest = (interestId) => {
     setSaveMessage("");
@@ -209,18 +226,6 @@ export default function OnboardingQuiz() {
     setCurrentStep((previousStep) => Math.min(previousStep + 1, totalSteps - 1));
   };
 
-  const handleSkipQuiz = () => {
-    setSaveMessage("");
-    setSaveError("");
-    if (isAuthed) {
-      navigate(returnTo, { replace: true });
-      return;
-    }
-    navigate("/register", {
-      state: { from: returnTo },
-    });
-  };
-
   const handleSelectAndAdvance = (questionId, optionId) => {
     if (isAdvancing) return;
     setSaveMessage("");
@@ -246,9 +251,24 @@ export default function OnboardingQuiz() {
           suggested.forEach((id) => next.add(id));
           return next;
         });
-        setQuizPhase("interests");
+        setQuizPhase("review");
       }
     }, 280);
+  };
+
+  const handleAddInterest = () => {
+    if (!interestToAddId) {
+      return;
+    }
+
+    setSaveMessage("");
+    setSaveError("");
+    setSelectedIds((previousSelectedIds) => {
+      const nextSelectedIds = new Set(previousSelectedIds);
+      nextSelectedIds.add(interestToAddId);
+      return nextSelectedIds;
+    });
+    setInterestToAddId("");
   };
 
   const saveSelections = useCallback(async () => {
@@ -456,6 +476,134 @@ export default function OnboardingQuiz() {
               >
                 Skip quiz
               </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (quizPhase === "review") {
+    return (
+      <div style={page}>
+        <section style={quizPhaseShell}>
+          <div style={{ ...quizPhaseCard, maxWidth: "640px" }}>
+            <div style={quizPhaseTop}>
+              <p style={eyebrow}>Review your interests</p>
+              <div style={statusPill}>{selectedIds.size} picked</div>
+            </div>
+
+            <p style={quizStepLabel}>Final step</p>
+            <h2 style={quizQuestionHeading}>Adjust your quiz suggestions</h2>
+            <p style={interestSubtitle}>
+              Remove anything that does not fit, or add another interest before saving.
+            </p>
+
+            {selectedInterests.length > 0 ? (
+              <div style={reviewInterestGrid}>
+                {selectedInterests.map((interest) => (
+                  <div key={interest.id} style={reviewInterestChip}>
+                    <span style={reviewInterestName}>{interest.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleInterest(interest.id)}
+                      aria-label={`Remove ${interest.name}`}
+                      style={removeInterestButton}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={emptyReviewState}>
+                No interests selected yet. Add at least one interest to finish.
+              </div>
+            )}
+
+            <div style={manualAddRow}>
+              <select
+                value={interestToAddId}
+                onChange={(event) => setInterestToAddId(event.target.value)}
+                style={manualAddSelect}
+                aria-label="Interest to add"
+              >
+                <option value="">Choose an interest to add</option>
+                {interestsAvailableToAdd.map((interest) => (
+                  <option key={interest.id} value={interest.id}>
+                    {interest.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddInterest}
+                disabled={!interestToAddId}
+                style={{
+                  ...primaryButton,
+                  opacity: interestToAddId ? 1 : 0.62,
+                  cursor: interestToAddId ? "pointer" : "default",
+                }}
+              >
+                Add
+              </button>
+            </div>
+
+            {saveError ? <Alert variant="error" className="mt-[length:var(--space-8)]">{saveError}</Alert> : null}
+            {saveMessage ? <Alert variant="success" className="mt-[length:var(--space-8)]">{saveMessage}</Alert> : null}
+
+            <div style={quizPhaseFooter}>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuizQuestionStep(ONBOARDING_QUIZ_QUESTIONS.length - 1);
+                  setQuizPhase("quiz");
+                }}
+                style={ghostButton}
+              >
+                ← Back
+              </button>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setQuizPhase("interests")}
+                  style={ghostButton}
+                >
+                  Browse all
+                </button>
+                {!isAuthed ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/login", { state: { from: returnTo } })}
+                      style={ghostButton}
+                    >
+                      Log in to save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/register", { state: { from: returnTo } })}
+                      style={primaryButton}
+                    >
+                      Create account
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleFinish}
+                    style={{
+                      ...primaryButton,
+                      opacity: isSaving || !hasAnySelection ? 0.72 : 1,
+                      cursor: isSaving || !hasAnySelection ? "default" : "pointer",
+                    }}
+                    disabled={isSaving || !hasAnySelection}
+                  >
+                    {isSaving ? "Saving..." : "Save interests"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -745,6 +893,80 @@ const ghostButton = {
   fontWeight: 600,
   fontSize: "14px",
   padding: "12px 20px",
+};
+
+const reviewInterestGrid = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "10px",
+  marginBottom: "22px",
+};
+
+const reviewInterestChip = {
+  display: "inline-flex",
+  alignItems: "center",
+  maxWidth: "100%",
+  gap: "10px",
+  padding: "10px 12px 10px 14px",
+  borderRadius: "999px",
+  border: "1px solid rgba(17,24,39,0.1)",
+  background: "#ffffff",
+  boxShadow: "0 8px 20px rgba(15,23,42,0.06)",
+};
+
+const reviewInterestName = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: "14px",
+  fontWeight: 600,
+  color: "#111827",
+};
+
+const removeInterestButton = {
+  width: "24px",
+  height: "24px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  border: "1px solid rgba(17,24,39,0.12)",
+  borderRadius: "999px",
+  background: "#f9fafb",
+  color: "#374151",
+  fontSize: "18px",
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const emptyReviewState = {
+  padding: "14px 16px",
+  borderRadius: "14px",
+  border: "1px dashed rgba(17,24,39,0.18)",
+  background: "rgba(255,255,255,0.72)",
+  color: "#6b7280",
+  fontSize: "14px",
+  marginBottom: "22px",
+};
+
+const manualAddRow = {
+  display: "flex",
+  gap: "10px",
+  alignItems: "stretch",
+  marginBottom: "28px",
+};
+
+const manualAddSelect = {
+  flex: 1,
+  minWidth: 0,
+  border: "1.5px solid rgba(17,24,39,0.14)",
+  borderRadius: "999px",
+  background: "white",
+  color: "#111827",
+  fontSize: "14px",
+  fontWeight: 500,
+  padding: "0 16px",
 };
 
 const skeletonBar = {
