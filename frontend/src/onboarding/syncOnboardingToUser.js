@@ -1,6 +1,8 @@
 import {
   clearOnboardingQuizAnswers,
+  clearOnboardingParticipationPreference,
   clearOnboardingSelections,
+  readOnboardingParticipationPreference,
   readOnboardingSelections,
 } from "./storage.js";
 
@@ -28,8 +30,16 @@ export async function syncPendingOnboardingToUser(userId, apiFetch) {
     }),
   });
 
+  await apiFetch(`/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      participation_preference: readOnboardingParticipationPreference(),
+    }),
+  });
+
   clearOnboardingSelections();
   clearOnboardingQuizAnswers();
+  clearOnboardingParticipationPreference();
 
   return { synced: true, interestCount: finalIds.length };
 }

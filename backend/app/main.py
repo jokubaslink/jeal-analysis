@@ -20,6 +20,13 @@ from . import models
 
 app = FastAPI()
 
+PARTICIPATION_PREFERENCES = {"clubs", "events", "both"}
+
+
+def _normalize_participation_preference(value: str | None) -> str:
+    normalized = (value or "both").strip().lower()
+    return normalized if normalized in PARTICIPATION_PREFERENCES else "both"
+
 
 @app.exception_handler(OperationalError)
 def handle_db_error(_request: Request, exc: OperationalError) -> JSONResponse:
@@ -58,6 +65,7 @@ class UserCreate(BaseModel):
     grade_year: int | None = None
     age_group: str | None = None
     city: str | None = None
+    participation_preference: str | None = None
 
     @field_validator("password")
     @classmethod
@@ -79,6 +87,16 @@ class UserCreate(BaseModel):
 
         return v
 
+    @field_validator("participation_preference")
+    @classmethod
+    def validate_participation_preference(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if normalized not in PARTICIPATION_PREFERENCES:
+            raise ValueError("Participation preference must be clubs, events, or both.")
+        return normalized
+
 
 class UserLogin(BaseModel):
     email: str
@@ -97,6 +115,7 @@ class UserOut(BaseModel):
     grade_year: int | None = None
     age_group: str | None = None
     city: str | None = None
+    participation_preference: str = "both"
 
 
 class UserMeOut(UserOut):
@@ -114,6 +133,17 @@ class UserUpdate(BaseModel):
     grade_year: int | None = None
     age_group: str | None = None
     city: str | None = None
+    participation_preference: str | None = None
+
+    @field_validator("participation_preference")
+    @classmethod
+    def validate_participation_preference(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if normalized not in PARTICIPATION_PREFERENCES:
+            raise ValueError("Participation preference must be clubs, events, or both.")
+        return normalized
 
 
 class AttendeeSuggestionSettingsUpdate(BaseModel):
@@ -794,6 +824,7 @@ def _user_to_me_out(user: models.User) -> UserMeOut:
         grade_year=user.grade_year,
         age_group=user.age_group,
         city=user.city,
+        participation_preference=_normalize_participation_preference(user.participation_preference),
         is_admin=bool(user.is_admin),
         show_in_attendee_suggestions=bool(user.show_in_attendee_suggestions),
     )
@@ -1094,6 +1125,7 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
         grade_year=payload.grade_year,
         age_group=payload.age_group,
         city=payload.city,
+        participation_preference=_normalize_participation_preference(payload.participation_preference),
     )
     db.add(user)
     db.commit()
@@ -1118,6 +1150,7 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
         grade_year=payload.grade_year,
         age_group=payload.age_group,
         city=payload.city,
+        participation_preference=_normalize_participation_preference(payload.participation_preference),
     )
     try:
         db.add(user)
@@ -1230,6 +1263,7 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
         grade_year=user.grade_year,
         age_group=user.age_group,
         city=user.city,
+        participation_preference=_normalize_participation_preference(user.participation_preference),
     )
 
 
@@ -1253,6 +1287,7 @@ def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db)
         "grade_year",
         "age_group",
         "city",
+        "participation_preference",
     }
 
     for field, value in data.items():
@@ -1281,6 +1316,7 @@ def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db)
         grade_year=user.grade_year,
         age_group=user.age_group,
         city=user.city,
+        participation_preference=_normalize_participation_preference(user.participation_preference),
     )
 
 
@@ -1298,6 +1334,8 @@ DEFAULT_RECOMMENDED_CLUBS_LIMIT = 10
 MAX_RECOMMENDED_CLUBS_LIMIT = 50
 DEFAULT_RECOMMENDED_EVENTS_LIMIT = 10
 MAX_RECOMMENDED_EVENTS_LIMIT = 50
+PREFERRED_RECOMMENDATION_LIMIT = 14
+SECONDARY_RECOMMENDATION_LIMIT = 6
 
 
 def _resolve_recommendation_limit(
@@ -1316,6 +1354,41 @@ def _resolve_recommendation_limit(
         )
 
     return min(raw_limit, max_limit)
+
+
+def _default_recommendation_limit_for_kind(
+    preference: str | None,
+    kind: str,
+    fallback: int,
+) -> int:
+    normalized = _normalize_participation_preference(preference)
+    if normalized == "clubs":
+        return (
+            PREFERRED_RECOMMENDATION_LIMIT
+            if kind == "clubs"
+            else SECONDARY_RECOMMENDATION_LIMIT
+        )
+    if normalized == "events":
+        return (
+            PREFERRED_RECOMMENDATION_LIMIT
+            if kind == "events"
+            else SECONDARY_RECOMMENDATION_LIMIT
+        )
+    return fallback
+
+
+def _apply_participation_preference_to_score(
+    score: int,
+    preference: str | None,
+    kind: str,
+) -> int:
+    normalized = _normalize_participation_preference(preference)
+    multiplier = 1.0
+    if normalized == kind:
+        multiplier = 1.25
+    elif normalized in {"clubs", "events"}:
+        multiplier = 0.75
+    return max(1, round(score * multiplier))
 
 
 def _get_category_interest_counts(user_id, db: Session) -> dict:
@@ -1381,6 +1454,7 @@ def _build_recommended_clubs(
     user_interest_ids: set[uuid.UUID],
     *,
     limit: int,
+    participation_preference: str | None = None,
     db: Session,
 ) -> list["RecommendedClubOut"]:
     if not category_interest_counts:
@@ -1399,9 +1473,14 @@ def _build_recommended_clubs(
 
     scored: list[tuple[int, models.Club]] = []
     for club in clubs:
-        score = _score_club_for_user(club, category_interest_counts, user_interest_ids)
-        if score <= 0:
+        base_score = _score_club_for_user(club, category_interest_counts, user_interest_ids)
+        if base_score <= 0:
             continue
+        score = _apply_participation_preference_to_score(
+            base_score,
+            participation_preference,
+            "clubs",
+        )
         scored.append((score, club))
 
     scored.sort(key=lambda x: (-x[0], (x[1].name or "").lower()))
@@ -1437,6 +1516,7 @@ def _build_recommended_events(
     user_interest_ids: set[uuid.UUID],
     *,
     limit: int,
+    participation_preference: str | None = None,
     db: Session,
 ) -> list[RecommendedEventOut]:
     if not category_interest_counts:
@@ -1456,9 +1536,14 @@ def _build_recommended_events(
 
     scored: list[tuple[int, models.Event]] = []
     for event in events:
-        score = _score_event_for_user(event, category_interest_counts, user_interest_ids)
-        if score <= 0:
+        base_score = _score_event_for_user(event, category_interest_counts, user_interest_ids)
+        if base_score <= 0:
             continue
+        score = _apply_participation_preference_to_score(
+            base_score,
+            participation_preference,
+            "events",
+        )
         scored.append((score, event))
 
     scored.sort(key=lambda x: (-x[0], x[1].start_time))
@@ -1988,7 +2073,11 @@ def list_recommended_clubs(
     """
     limit_value = _resolve_recommendation_limit(
         limit,
-        default_limit=DEFAULT_RECOMMENDED_CLUBS_LIMIT,
+        default_limit=_default_recommendation_limit_for_kind(
+            current_user.participation_preference,
+            "clubs",
+            DEFAULT_RECOMMENDED_CLUBS_LIMIT,
+        ),
         max_limit=MAX_RECOMMENDED_CLUBS_LIMIT,
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
@@ -1997,6 +2086,7 @@ def list_recommended_clubs(
         category_interest_counts,
         user_interest_ids,
         limit=limit_value,
+        participation_preference=current_user.participation_preference,
         db=db,
     )
 
@@ -2258,7 +2348,11 @@ def list_recommended_events(
     """
     limit_value = _resolve_recommendation_limit(
         limit,
-        default_limit=DEFAULT_RECOMMENDED_EVENTS_LIMIT,
+        default_limit=_default_recommendation_limit_for_kind(
+            current_user.participation_preference,
+            "events",
+            DEFAULT_RECOMMENDED_EVENTS_LIMIT,
+        ),
         max_limit=MAX_RECOMMENDED_EVENTS_LIMIT,
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
@@ -2267,6 +2361,7 @@ def list_recommended_events(
         category_interest_counts,
         user_interest_ids,
         limit=limit_value,
+        participation_preference=current_user.participation_preference,
         db=db,
     )
 
@@ -2865,12 +2960,20 @@ def get_recommendations(
     """
     club_limit_value = _resolve_recommendation_limit(
         club_limit,
-        default_limit=DEFAULT_RECOMMENDED_CLUBS_LIMIT,
+        default_limit=_default_recommendation_limit_for_kind(
+            current_user.participation_preference,
+            "clubs",
+            DEFAULT_RECOMMENDED_CLUBS_LIMIT,
+        ),
         max_limit=MAX_RECOMMENDED_CLUBS_LIMIT,
     )
     event_limit_value = _resolve_recommendation_limit(
         event_limit,
-        default_limit=DEFAULT_RECOMMENDED_EVENTS_LIMIT,
+        default_limit=_default_recommendation_limit_for_kind(
+            current_user.participation_preference,
+            "events",
+            DEFAULT_RECOMMENDED_EVENTS_LIMIT,
+        ),
         max_limit=MAX_RECOMMENDED_EVENTS_LIMIT,
     )
     category_interest_counts = _get_category_interest_counts(current_user.id, db)
@@ -2881,12 +2984,14 @@ def get_recommendations(
             category_interest_counts,
             user_interest_ids,
             limit=club_limit_value,
+            participation_preference=current_user.participation_preference,
             db=db,
         ),
         events=_build_recommended_events(
             category_interest_counts,
             user_interest_ids,
             limit=event_limit_value,
+            participation_preference=current_user.participation_preference,
             db=db,
         ),
     )

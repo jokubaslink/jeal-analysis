@@ -89,6 +89,16 @@ export const ONBOARDING_QUIZ_QUESTIONS = [
       { id: "q8_opt_deep_dive", label: "Deep dive — major commitment",    weights: { "STEM & Technology": 4 },                                     traits: { commitment: 4 } },
     ],
   },
+  {
+    id: "q_participation",
+    prompt: "How do you want to participate most often?",
+    options: [
+      { id: "q9_opt_clubs",  label: "Join a club or recurring group",      weights: { "Social & Community": 2, "Hobbies & Lifestyle": 1 },          traits: { commitment: 3, social: 1 }, participationPreference: "clubs" },
+      { id: "q9_opt_events", label: "Attend one-time events",              weights: { "Arts & Culture": 1, "Social & Community": 1 },               traits: { social: 2 }, participationPreference: "events" },
+      { id: "q9_opt_both",   label: "A mix of clubs and events",           weights: { "Social & Community": 2, "Hobbies & Lifestyle": 1 },          traits: { social: 2, commitment: 1 }, participationPreference: "both" },
+      { id: "q9_opt_unsure", label: "Not sure yet",                        weights: { "Hobbies & Lifestyle": 2 },                                   traits: {}, participationPreference: "both" },
+    ],
+  },
 ];
 
 /**
@@ -216,6 +226,22 @@ export function computeBoostedCategoryScores(
   const categoryScores = scoreQuizAnswers(answerOptionIds, questions);
   const traitScores = scoreQuizTraits(answerOptionIds, questions);
   return applyTraitBoosts(categoryScores, traitScores);
+}
+
+export function getParticipationPreferenceFromAnswers(
+  answerOptionIds,
+  questions = ONBOARDING_QUIZ_QUESTIONS
+) {
+  const optionIndex = buildOptionIndex(questions);
+
+  for (const optionId of answerOptionIds || []) {
+    const preference = optionIndex.get(optionId)?.participationPreference;
+    if (["clubs", "events", "both"].includes(preference)) {
+      return preference;
+    }
+  }
+
+  return "both";
 }
 
 // ---------------------------------------------------------------------------

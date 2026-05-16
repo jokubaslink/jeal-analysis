@@ -6,7 +6,10 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import {
   clearOnboardingSelections,
   clearOnboardingQuizAnswers,
+  clearOnboardingParticipationPreference,
+  readOnboardingParticipationPreference,
   readOnboardingSelections,
+  writeOnboardingParticipationPreference,
   writeOnboardingQuizAnswers,
   writeOnboardingSelections,
 } from "../onboarding/storage.js";
@@ -14,6 +17,7 @@ import {
   ONBOARDING_QUIZ_QUESTIONS,
   hydrateQuizAnswersFromStorage,
   computeBoostedCategoryScores,
+  getParticipationPreferenceFromAnswers,
   suggestInterestIdsFromCategoryScores,
 } from "../onboarding/quizEngine.js";
 import { Alert, EmptyState, Skeleton } from "../components/ui/index.js";
@@ -34,6 +38,9 @@ export default function OnboardingQuiz() {
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [interestToAddId, setInterestToAddId] = useState("");
+  const [participationPreference, setParticipationPreference] = useState(() =>
+    readOnboardingParticipationPreference()
+  );
   const [hasLoadedSavedSelections, setHasLoadedSavedSelections] = useState(false);
   const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState(() =>
     hydrateQuizAnswersFromStorage()
@@ -137,6 +144,10 @@ export default function OnboardingQuiz() {
     writeOnboardingQuizAnswers(Object.values(quizAnswersByQuestionId));
   }, [quizAnswersByQuestionId]);
 
+  useEffect(() => {
+    writeOnboardingParticipationPreference(participationPreference);
+  }, [participationPreference]);
+
   const steps = useMemo(
     () =>
       categories
@@ -233,8 +244,10 @@ export default function OnboardingQuiz() {
     setIsAdvancing(true);
 
     const updatedAnswers = { ...quizAnswersByQuestionId, [questionId]: optionId };
+    const updatedAnswerIds = Object.values(updatedAnswers);
     setQuizAnswersByQuestionId(updatedAnswers);
-    writeOnboardingQuizAnswers(Object.values(updatedAnswers));
+    writeOnboardingQuizAnswers(updatedAnswerIds);
+    setParticipationPreference(getParticipationPreferenceFromAnswers(updatedAnswerIds));
 
     const isLastQuestion = quizQuestionStep === ONBOARDING_QUIZ_QUESTIONS.length - 1;
 
@@ -243,8 +256,7 @@ export default function OnboardingQuiz() {
       if (!isLastQuestion) {
         setQuizQuestionStep((q) => q + 1);
       } else {
-        const allAnswerIds = Object.values(updatedAnswers);
-        const boosted = computeBoostedCategoryScores(allAnswerIds);
+        const boosted = computeBoostedCategoryScores(updatedAnswerIds);
         const suggested = suggestInterestIdsFromCategoryScores(boosted, categories, interests);
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -291,8 +303,16 @@ export default function OnboardingQuiz() {
         }),
       });
 
+      await apiFetch(`/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          participation_preference: participationPreference,
+        }),
+      });
+
       clearOnboardingSelections();
       clearOnboardingQuizAnswers();
+      clearOnboardingParticipationPreference();
       setSaveMessage("Your interests are saved. Redirecting to your results...");
       window.setTimeout(() => navigate(returnTo, { replace: true }), 900);
     } catch (saveSelectionsError) {
@@ -310,7 +330,7 @@ export default function OnboardingQuiz() {
     } finally {
       setIsSaving(false);
     }
-  }, [hasAnySelection, logout, navigate, returnTo, selectedIds, userId]);
+  }, [hasAnySelection, logout, navigate, participationPreference, returnTo, selectedIds, userId]);
 
   const handleFinish = async () => {
     if (!hasAnySelection) {
