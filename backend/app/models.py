@@ -65,6 +65,16 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    saved_clubs = relationship(
+        "UserSavedClub",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    saved_events = relationship(
+        "UserSavedEvent",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     # Timestamps
     created_at = Column(
@@ -375,4 +385,36 @@ class ClubActivityFeedback(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class UserSavedClub(Base):
+    __tablename__ = "user_saved_clubs"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id", ondelete="CASCADE"), primary_key=True)
+
+    user = relationship("User", back_populates="saved_clubs")
+    club = relationship("Club")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class UserSavedEvent(Base):
+    __tablename__ = "user_saved_events"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+
+    user = relationship("User", back_populates="saved_events")
+    event = relationship("Event")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )

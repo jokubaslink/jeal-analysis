@@ -38,6 +38,12 @@ export default function Dashboard() {
   const [joinedClubs, setJoinedClubs] = useState([]);
   const [joinedClubsErrorMessage, setJoinedClubsErrorMessage] = useState("");
   const [pendingLeaveClubId, setPendingLeaveClubId] = useState(null);
+  const [savedClubs, setSavedClubs] = useState([]);
+  const [savedEvents, setSavedEvents] = useState([]);
+  const [isLoadingSavedItems, setIsLoadingSavedItems] = useState(true);
+  const [savedItemsErrorMessage, setSavedItemsErrorMessage] = useState("");
+  const [pendingUnsaveClubId, setPendingUnsaveClubId] = useState(null);
+  const [pendingUnsaveEventId, setPendingUnsaveEventId] = useState(null);
   const [similarUsers, setSimilarUsers] = useState([]);
   const [isLoadingSimilarUsers, setIsLoadingSimilarUsers] = useState(true);
   const [similarUsersErrorMessage, setSimilarUsersErrorMessage] = useState("");
@@ -128,6 +134,20 @@ export default function Dashboard() {
               error.message || "Could not load your clubs.";
           }
 
+          let savedClubsPayload = [];
+          let savedEventsPayload = [];
+          let savedItemsErr = "";
+          try {
+            const [rawClubs, rawEvents] = await Promise.all([
+              apiFetch(`/users/${userId}/saved-clubs`),
+              apiFetch(`/users/${userId}/saved-events`),
+            ]);
+            savedClubsPayload = Array.isArray(rawClubs) ? rawClubs : [];
+            savedEventsPayload = Array.isArray(rawEvents) ? rawEvents : [];
+          } catch (error) {
+            savedItemsErr = error.message || "Could not load your saved items.";
+          }
+
           if (!ignore) {
             setUserInterests(interestsPayload);
             setRecommendedClubs(recommendedClubsPayload);
@@ -138,6 +158,9 @@ export default function Dashboard() {
             setRegisteredEventsErrorMessage(registeredEventsError);
             setJoinedClubs(joinedClubsPayload);
             setJoinedClubsErrorMessage(joinedClubsErr);
+            setSavedClubs(savedClubsPayload);
+            setSavedEvents(savedEventsPayload);
+            setSavedItemsErrorMessage(savedItemsErr);
           }
         } else {
           if (!ignore) {
@@ -150,6 +173,9 @@ export default function Dashboard() {
             setRegisteredEventsErrorMessage("");
             setJoinedClubs([]);
             setJoinedClubsErrorMessage("");
+            setSavedClubs([]);
+            setSavedEvents([]);
+            setSavedItemsErrorMessage("");
           }
         }
 
@@ -169,6 +195,7 @@ export default function Dashboard() {
           setIsLoadingRecommendedEvents(false);
           setIsLoadingSimilarUsers(false);
           setIsLoadingRegisteredEvents(false);
+          setIsLoadingSavedItems(false);
         }
       }
     };
@@ -298,6 +325,30 @@ export default function Dashboard() {
       setJoinedClubsErrorMessage(error.message || "Could not update your clubs.");
     } finally {
       setPendingLeaveClubId(null);
+    }
+  };
+
+  const handleUnsaveClub = async (clubId) => {
+    setPendingUnsaveClubId(clubId);
+    try {
+      await apiFetch(`/clubs/${clubId}/save`, { method: "DELETE" });
+      setSavedClubs((prev) => prev.filter((c) => c.id !== clubId));
+    } catch (error) {
+      setSavedItemsErrorMessage(error.message || "Could not remove saved club.");
+    } finally {
+      setPendingUnsaveClubId(null);
+    }
+  };
+
+  const handleUnsaveEvent = async (eventId) => {
+    setPendingUnsaveEventId(eventId);
+    try {
+      await apiFetch(`/events/${eventId}/save`, { method: "DELETE" });
+      setSavedEvents((prev) => prev.filter((e) => e.id !== eventId));
+    } catch (error) {
+      setSavedItemsErrorMessage(error.message || "Could not remove saved event.");
+    } finally {
+      setPendingUnsaveEventId(null);
     }
   };
 
@@ -522,6 +573,105 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+            </>
+          )}
+        </section>
+
+        <section style={card}>
+          <div style={profileHeader}>
+            <div>
+              <h2 style={sectionTitle}>Saved items</h2>
+              <p style={profileSubtext}>
+                Clubs and events you bookmarked for later.
+              </p>
+            </div>
+          </div>
+
+          {isLoadingSavedItems ? (
+            <LoadingState
+              align="left"
+              title="Loading saved items"
+              description="Fetching your bookmarked clubs and events."
+            />
+          ) : !userId ? (
+            <EmptyState
+              align="left"
+              title="Log in to see saved items"
+              description="Your saved clubs and events will appear here after sign in."
+            />
+          ) : savedItemsErrorMessage ? (
+            <Alert variant="error">{savedItemsErrorMessage}</Alert>
+          ) : savedClubs.length === 0 && savedEvents.length === 0 ? (
+            <EmptyState
+              align="left"
+              title="No saved items yet"
+              description="Open any club or event and use the Save button to bookmark it here."
+              action={
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <Button asChild variant="primary">
+                    <Link to="/clubs">Browse clubs</Link>
+                  </Button>
+                  <Button asChild variant="secondary">
+                    <Link to="/events">Browse events</Link>
+                  </Button>
+                </div>
+              }
+            />
+          ) : (
+            <>
+              {savedClubs.length > 0 ? (
+                <div style={{ marginBottom: savedEvents.length > 0 ? "20px" : 0 }}>
+                  <h3 style={savedItemsSubheading}>Saved clubs</h3>
+                  <div style={savedItemsGrid}>
+                    {savedClubs.map((club) => (
+                      <article key={club.id} style={savedItemCard}>
+                        <div style={savedItemCardBody}>
+                          <Link to={`/clubs/${club.id}`} style={savedItemTitle}>
+                            {club.name}
+                          </Link>
+                          <p style={savedItemMeta}>
+                            {club.category_name || "Uncategorized"}
+                          </p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          disabled={pendingUnsaveClubId === club.id}
+                          onClick={() => handleUnsaveClub(club.id)}
+                        >
+                          {pendingUnsaveClubId === club.id ? "Removing..." : "Remove"}
+                        </Button>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {savedEvents.length > 0 ? (
+                <div>
+                  <h3 style={savedItemsSubheading}>Saved events</h3>
+                  <div style={savedItemsGrid}>
+                    {savedEvents.map((event) => (
+                      <article key={event.id} style={savedItemCard}>
+                        <div style={savedItemCardBody}>
+                          <Link to={`/events/${event.id}`} style={savedItemTitle}>
+                            {event.title}
+                          </Link>
+                          <p style={savedItemMeta}>
+                            {formatEventDate(event.start_time)}
+                          </p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          disabled={pendingUnsaveEventId === event.id}
+                          onClick={() => handleUnsaveEvent(event.id)}
+                        >
+                          {pendingUnsaveEventId === event.id ? "Removing..." : "Remove"}
+                        </Button>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           )}
         </section>
@@ -1297,6 +1447,50 @@ const interestChip = {
   color: "#111827",
   fontSize: "13px",
   fontWeight: 600,
+};
+
+const savedItemsSubheading = {
+  margin: "0 0 10px 0",
+  fontSize: "14px",
+  fontWeight: 700,
+  color: "#374151",
+};
+
+const savedItemsGrid = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+};
+
+const savedItemCard = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "12px 16px",
+  borderRadius: "14px",
+  border: "1px solid #e5e7eb",
+  background: "#fafafa",
+};
+
+const savedItemCardBody = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+  minWidth: 0,
+};
+
+const savedItemTitle = {
+  fontSize: "15px",
+  fontWeight: 600,
+  color: "#111827",
+  textDecoration: "none",
+};
+
+const savedItemMeta = {
+  margin: 0,
+  fontSize: "13px",
+  color: "#6b7280",
 };
 
 const recommendedClubGrid = {

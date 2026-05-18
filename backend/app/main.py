@@ -364,6 +364,30 @@ class JoinedClubOut(ClubOut):
     joined_at: str
 
 
+class SavedClubOut(ClubOut):
+    saved_at: str
+
+
+class SavedEventOut(BaseModel):
+    id: str
+    title: str
+    description: str | None = None
+    category_id: str | None = None
+    category_name: str | None = None
+    club_id: str | None = None
+    club_name: str | None = None
+    start_time: str
+    end_time: str | None = None
+    city: str | None = None
+    location: str | None = None
+    is_active: bool
+    is_online: bool
+    registration_url: str | None = None
+    image_url: str | None = None
+    attendee_count: int
+    saved_at: str
+
+
 class ClubVisibilityUpdate(BaseModel):
     is_active: bool
 
@@ -3111,6 +3135,204 @@ def leave_club(
         db.query(models.UserClubMembership)
         .filter(models.UserClubMembership.user_id == current_user.id)
         .filter(models.UserClubMembership.club_id == club.id)
+        .first()
+    )
+    if row:
+        db.delete(row)
+        db.commit()
+    return
+
+
+# ---------------------------------------------------------------------------
+# Saved clubs
+# ---------------------------------------------------------------------------
+
+def _serialize_saved_club(row: models.UserSavedClub) -> SavedClubOut:
+    return SavedClubOut(
+        **_serialize_club(row.club).model_dump(),
+        saved_at=row.created_at.isoformat(),
+    )
+
+
+@app.get("/users/{user_id}/saved-clubs", response_model=list[SavedClubOut])
+def list_saved_clubs(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_or_admin(user_id, current_user)
+
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    rows = (
+        db.query(models.UserSavedClub)
+        .options(
+            joinedload(models.UserSavedClub.club).joinedload(models.Club.category),
+            joinedload(models.UserSavedClub.club).joinedload(models.Club.memberships),
+        )
+        .join(models.Club, models.UserSavedClub.club_id == models.Club.id)
+        .filter(models.UserSavedClub.user_id == user_uuid)
+        .order_by(models.Club.name.asc())
+        .all()
+    )
+    return [_serialize_saved_club(row) for row in rows]
+
+
+@app.post("/clubs/{club_id}/save", response_model=SavedClubOut)
+def save_club(
+    club_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+
+    existing = (
+        db.query(models.UserSavedClub)
+        .filter(models.UserSavedClub.user_id == current_user.id)
+        .filter(models.UserSavedClub.club_id == club.id)
+        .first()
+    )
+    if existing is None:
+        db.add(models.UserSavedClub(user_id=current_user.id, club_id=club.id))
+        db.commit()
+
+    row = (
+        db.query(models.UserSavedClub)
+        .options(
+            joinedload(models.UserSavedClub.club).joinedload(models.Club.category),
+            joinedload(models.UserSavedClub.club).joinedload(models.Club.memberships),
+        )
+        .filter(models.UserSavedClub.user_id == current_user.id)
+        .filter(models.UserSavedClub.club_id == club.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Club not found.")
+    return _serialize_saved_club(row)
+
+
+@app.delete("/clubs/{club_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+def unsave_club(
+    club_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    row = (
+        db.query(models.UserSavedClub)
+        .filter(models.UserSavedClub.user_id == current_user.id)
+        .filter(models.UserSavedClub.club_id == club.id)
+        .first()
+    )
+    if row:
+        db.delete(row)
+        db.commit()
+    return
+
+
+# ---------------------------------------------------------------------------
+# Saved events
+# ---------------------------------------------------------------------------
+
+def _serialize_saved_event(row: models.UserSavedEvent) -> SavedEventOut:
+    event = row.event
+    return SavedEventOut(
+        id=str(event.id),
+        title=event.title,
+        description=event.description,
+        category_id=str(event.category_id) if event.category_id else None,
+        category_name=event.category.name if event.category else None,
+        club_id=str(event.club_id) if event.club_id else None,
+        club_name=event.club.name if event.club else None,
+        start_time=event.start_time.isoformat(),
+        end_time=event.end_time.isoformat() if event.end_time else None,
+        city=event.city,
+        location=event.location,
+        is_active=bool(event.is_active),
+        is_online=bool(event.is_online),
+        registration_url=event.registration_url,
+        image_url=event.image_url,
+        attendee_count=_event_attendee_count(event),
+        saved_at=row.created_at.isoformat(),
+    )
+
+
+@app.get("/users/{user_id}/saved-events", response_model=list[SavedEventOut])
+def list_saved_events(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_or_admin(user_id, current_user)
+
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format.")
+
+    rows = (
+        db.query(models.UserSavedEvent)
+        .options(
+            joinedload(models.UserSavedEvent.event).joinedload(models.Event.category),
+            joinedload(models.UserSavedEvent.event).joinedload(models.Event.club),
+            joinedload(models.UserSavedEvent.event).joinedload(models.Event.registrations),
+        )
+        .join(models.Event, models.UserSavedEvent.event_id == models.Event.id)
+        .filter(models.UserSavedEvent.user_id == user_uuid)
+        .order_by(models.Event.start_time.asc())
+        .all()
+    )
+    return [_serialize_saved_event(row) for row in rows]
+
+
+@app.post("/events/{event_id}/save", response_model=SavedEventOut)
+def save_event(
+    event_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+
+    existing = (
+        db.query(models.UserSavedEvent)
+        .filter(models.UserSavedEvent.user_id == current_user.id)
+        .filter(models.UserSavedEvent.event_id == event.id)
+        .first()
+    )
+    if existing is None:
+        db.add(models.UserSavedEvent(user_id=current_user.id, event_id=event.id))
+        db.commit()
+
+    row = (
+        db.query(models.UserSavedEvent)
+        .options(
+            joinedload(models.UserSavedEvent.event).joinedload(models.Event.category),
+            joinedload(models.UserSavedEvent.event).joinedload(models.Event.club),
+            joinedload(models.UserSavedEvent.event).joinedload(models.Event.registrations),
+        )
+        .filter(models.UserSavedEvent.user_id == current_user.id)
+        .filter(models.UserSavedEvent.event_id == event.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found.")
+    return _serialize_saved_event(row)
+
+
+@app.delete("/events/{event_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+def unsave_event(
+    event_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    row = (
+        db.query(models.UserSavedEvent)
+        .filter(models.UserSavedEvent.user_id == current_user.id)
+        .filter(models.UserSavedEvent.event_id == event.id)
         .first()
     )
     if row:
