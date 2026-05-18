@@ -23,6 +23,10 @@ export default function AdminEvents() {
   const [pendingVisibilityId, setPendingVisibilityId] = useState("");
   const [checkInQr, setCheckInQr] = useState(null);
   const [pendingQrId, setPendingQrId] = useState("");
+  const [attendanceFocus, setAttendanceFocus] = useState(null);
+  const [attendancePayload, setAttendancePayload] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -48,6 +52,49 @@ export default function AdminEvents() {
   useEffect(() => {
     setFlashMessage(location.state?.flashMessage || "");
   }, [location.state]);
+
+  useEffect(() => {
+    if (!attendanceFocus || attendanceFocus.kind !== "event") {
+      setAttendancePayload(null);
+      setAttendanceLoading(false);
+      setAttendanceError("");
+      return undefined;
+    }
+
+    let ignore = false;
+    setAttendanceLoading(true);
+    setAttendanceError("");
+    setAttendancePayload(null);
+
+    (async () => {
+      try {
+        const data = await apiFetch(`/admin/events/${attendanceFocus.id}/attendance`);
+        if (!ignore) setAttendancePayload(data);
+      } catch (e) {
+        if (!ignore) setAttendanceError(e.message || "Could not load attendance.");
+      } finally {
+        if (!ignore) setAttendanceLoading(false);
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [attendanceFocus]);
+
+  function toggleEventAttendance(eventItem) {
+    setEventsError("");
+    setFlashMessage("");
+    if (attendanceFocus?.kind === "event" && attendanceFocus.id === eventItem.id) {
+      setAttendanceFocus(null);
+      return;
+    }
+    setAttendanceFocus({
+      kind: "event",
+      id: eventItem.id,
+      title: eventItem.title,
+    });
+  }
 
   async function handleVisibilityChange(eventItem) {
     const nextIsActive = !eventItem.is_active;
@@ -142,6 +189,90 @@ export default function AdminEvents() {
         </div>
       ) : null}
 
+      {attendanceFocus?.kind === "event" ? (
+        <div className="mt-[length:var(--space-7)] rounded-lg border border-[var(--color-line)] bg-white p-[length:var(--space-5)]">
+          <div className="flex flex-wrap items-start justify-between gap-[length:var(--space-4)]">
+            <div>
+              <h3 className="m-0 text-lg font-semibold text-[var(--color-ink)]">Attendance · {attendanceFocus.title}</h3>
+              <p className="mt-[length:var(--space-2)] m-0 text-sm text-[var(--color-ink-subtle)]">
+                QR check-ins recorded for this event (registered users only).
+              </p>
+            </div>
+            <Button type="button" variant="secondary" onClick={() => setAttendanceFocus(null)}>
+              Close
+            </Button>
+          </div>
+
+          {attendanceLoading ? (
+            <p className="mt-[length:var(--space-5)] text-sm text-[var(--color-ink-subtle)]">Loading attendance…</p>
+          ) : null}
+
+          {attendanceError ? (
+            <div className="mt-[length:var(--space-5)]">
+              <Alert variant="error">{attendanceError}</Alert>
+            </div>
+          ) : null}
+
+          {!attendanceLoading && attendancePayload ? (
+            <>
+              <div className="mt-[length:var(--space-5)] flex flex-wrap gap-[length:var(--space-6)]">
+                <div>
+                  <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">Registered</p>
+                  <p className="m-0 mt-1 text-2xl font-semibold tabular-nums text-[var(--color-ink)]">
+                    {attendancePayload.registered_count}
+                  </p>
+                </div>
+                <div>
+                  <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">Checked in</p>
+                  <p className="m-0 mt-1 text-2xl font-semibold tabular-nums text-[var(--color-ink)]">
+                    {attendancePayload.checked_in_count}
+                  </p>
+                </div>
+                <div>
+                  <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">Check-in rate</p>
+                  <p className="m-0 mt-1 text-2xl font-semibold tabular-nums text-[var(--color-ink)]">
+                    {attendancePayload.registered_count > 0
+                      ? `${Math.round((100 * attendancePayload.checked_in_count) / attendancePayload.registered_count)}%`
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-[length:var(--space-7)] overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--color-line)]">
+                      <th className="px-[length:var(--space-2)] py-[length:var(--space-2)] text-left font-semibold">Attendee</th>
+                      <th className="px-[length:var(--space-2)] py-[length:var(--space-2)] text-left font-semibold">Email</th>
+                      <th className="px-[length:var(--space-2)] py-[length:var(--space-2)] text-left font-semibold">Checked in</th>
+                      <th className="px-[length:var(--space-2)] py-[length:var(--space-2)] text-left font-semibold">Method</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendancePayload.attendees.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-[length:var(--space-2)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                          No check-ins yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      attendancePayload.attendees.map((row) => (
+                        <tr key={row.user_id} className="border-b border-[var(--color-line)]">
+                          <td className="px-[length:var(--space-2)] py-[length:var(--space-3)]">{row.user_name || "—"}</td>
+                          <td className="px-[length:var(--space-2)] py-[length:var(--space-3)] break-all">{row.user_email}</td>
+                          <td className="px-[length:var(--space-2)] py-[length:var(--space-3)]">{formatDate(row.checked_in_at)}</td>
+                          <td className="px-[length:var(--space-2)] py-[length:var(--space-3)]">{row.check_in_method}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mt-[length:var(--space-10)] overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -190,6 +321,15 @@ export default function AdminEvents() {
                             : event.is_active
                               ? "Mark inactive"
                               : "Reactivate"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={
+                            attendanceFocus?.kind === "event" && attendanceFocus.id === event.id ? "default" : "secondary"
+                          }
+                          onClick={() => toggleEventAttendance(event)}
+                        >
+                          {attendanceFocus?.kind === "event" && attendanceFocus.id === event.id ? "Hide attendance" : "Attendance"}
                         </Button>
                         <Button
                           type="button"

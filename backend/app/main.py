@@ -4,13 +4,15 @@ import hmac
 import json
 import os
 import uuid
+from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import func
+from sqlalchemy import cast, func
+from sqlalchemy.types import Date as SqlDate
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
@@ -687,6 +689,51 @@ class AdminClubActivityFeedbackOut(BaseModel):
 class AdminFeedbackSummaryOut(BaseModel):
     event_feedback: list[AdminEventFeedbackOut]
     club_activity_feedback: list[AdminClubActivityFeedbackOut]
+
+
+class AdminAttendanceAttendeeOut(BaseModel):
+    user_id: str
+    user_email: str
+    user_name: str | None = None
+    checked_in_at: str
+    check_in_method: str
+
+
+class AdminEventAttendanceOut(BaseModel):
+    event_id: str
+    title: str
+    registered_count: int
+    checked_in_count: int
+    attendees: list[AdminAttendanceAttendeeOut]
+
+
+class AdminClubAttendanceSessionOut(BaseModel):
+    activity_start_time: str
+    checked_in_count: int
+    attendees: list[AdminAttendanceAttendeeOut]
+
+
+class AdminClubAttendanceOut(BaseModel):
+    club_id: str
+    club_name: str
+    member_count: int
+    sessions: list[AdminClubAttendanceSessionOut]
+
+
+class AdminAttendanceDailyPointOut(BaseModel):
+    date: str
+    event_check_ins: int
+    club_check_ins: int
+
+
+class AdminAttendanceOverviewOut(BaseModel):
+    daily: list[AdminAttendanceDailyPointOut]
+    total_event_check_ins: int
+    total_club_check_ins: int
+    scope_club_id: str | None = None
+    scope_club_name: str | None = None
+    scope_event_id: str | None = None
+    scope_event_title: str | None = None
 
 
 class RecommendationsOut(BaseModel):
@@ -2473,6 +2520,256 @@ def get_club_check_in_token(
         qr_data=f"/check-in?token={token}",
         title=club.name,
         activity_start_time=activity_start.isoformat(),
+    )
+
+
+@app.get("/admin/events/{event_id}/attendance", response_model=AdminEventAttendanceOut)
+def admin_get_event_attendance(
+    event_id: str,
+    brief: bool = Query(default=False),
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    event = _get_event_or_404(event_id, db=db)
+    registered_count = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .count()
+    )
+    rows = (
+        db.query(models.EventAttendance)
+        .options(joinedload(models.EventAttendance.user))
+        .filter(models.EventAttendance.event_id == event.id)
+        .order_by(models.EventAttendance.checked_in_at.desc())
+        .all()
+    )
+    checked_in_count = len(rows)
+    attendees: list[AdminAttendanceAttendeeOut] = []
+    if not brief:
+        attendees = [
+            AdminAttendanceAttendeeOut(
+                user_id=str(row.user_id),
+                user_email=row.user.email,
+                user_name=_display_user_name(row.user),
+                checked_in_at=row.checked_in_at.isoformat(),
+                check_in_method=row.check_in_method,
+            )
+            for row in rows
+        ]
+    return AdminEventAttendanceOut(
+        event_id=str(event.id),
+        title=event.title,
+        registered_count=registered_count,
+        checked_in_count=checked_in_count,
+        attendees=attendees,
+    )
+
+
+@app.get("/admin/clubs/{club_id}/attendance", response_model=AdminClubAttendanceOut)
+def admin_get_club_attendance(
+    club_id: str,
+    activity_start_time: datetime | None = Query(default=None),
+    brief: bool = Query(default=False),
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    club = _get_club_or_404(club_id, db=db)
+    member_count = (
+        db.query(models.UserClubMembership)
+        .filter(models.UserClubMembership.club_id == club.id)
+        .count()
+    )
+
+    if activity_start_time is not None:
+        ast = _normalize_activity_start(activity_start_time)
+        rows = (
+            db.query(models.ClubActivityAttendance)
+            .options(joinedload(models.ClubActivityAttendance.user))
+            .filter(models.ClubActivityAttendance.club_id == club.id)
+            .filter(models.ClubActivityAttendance.activity_start_time == ast)
+            .order_by(models.ClubActivityAttendance.checked_in_at.desc())
+            .all()
+        )
+        grouped: dict[datetime, list[models.ClubActivityAttendance]] = {ast: rows}
+    else:
+        session_times_rows = (
+            db.query(models.ClubActivityAttendance.activity_start_time)
+            .filter(models.ClubActivityAttendance.club_id == club.id)
+            .distinct()
+            .order_by(models.ClubActivityAttendance.activity_start_time.desc())
+            .limit(50)
+            .all()
+        )
+        session_times = [t[0] for t in session_times_rows]
+        if not session_times:
+            return AdminClubAttendanceOut(
+                club_id=str(club.id),
+                club_name=club.name,
+                member_count=member_count,
+                sessions=[],
+            )
+        rows = (
+            db.query(models.ClubActivityAttendance)
+            .options(joinedload(models.ClubActivityAttendance.user))
+            .filter(models.ClubActivityAttendance.club_id == club.id)
+            .filter(models.ClubActivityAttendance.activity_start_time.in_(session_times))
+            .order_by(
+                models.ClubActivityAttendance.activity_start_time.desc(),
+                models.ClubActivityAttendance.checked_in_at.desc(),
+            )
+            .all()
+        )
+        grouped = defaultdict(list)
+        for row in rows:
+            grouped[row.activity_start_time].append(row)
+
+    sessions_out: list[AdminClubAttendanceSessionOut] = []
+    for start_key in sorted(grouped.keys(), reverse=True):
+        group_rows = grouped[start_key]
+        attendees_list: list[AdminAttendanceAttendeeOut] = []
+        if not brief:
+            attendees_list = [
+                AdminAttendanceAttendeeOut(
+                    user_id=str(entry.user_id),
+                    user_email=entry.user.email,
+                    user_name=_display_user_name(entry.user),
+                    checked_in_at=entry.checked_in_at.isoformat(),
+                    check_in_method=entry.check_in_method,
+                )
+                for entry in sorted(group_rows, key=lambda e: e.checked_in_at)
+            ]
+        sessions_out.append(
+            AdminClubAttendanceSessionOut(
+                activity_start_time=start_key.isoformat(),
+                checked_in_count=len(group_rows),
+                attendees=attendees_list,
+            )
+        )
+
+    return AdminClubAttendanceOut(
+        club_id=str(club.id),
+        club_name=club.name,
+        member_count=member_count,
+        sessions=sessions_out,
+    )
+
+
+@app.get("/admin/attendance/overview", response_model=AdminAttendanceOverviewOut)
+def admin_attendance_overview(
+    days: int = Query(default=30, ge=1, le=366),
+    club_id: str | None = Query(default=None),
+    event_id: str | None = Query(default=None),
+    _admin: models.User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Daily QR check-in counts (UTC calendar days) for admin dashboard charts."""
+    club_raw = club_id.strip() if club_id else ""
+    event_raw = event_id.strip() if event_id else ""
+    if club_raw and event_raw:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Specify either club_id or event_id, not both.",
+        )
+
+    now = datetime.now(timezone.utc)
+    since_dt = now - timedelta(days=days)
+    end_date = now.date()
+    start_date = end_date - timedelta(days=days - 1)
+
+    scope_club_uuid = None
+    scope_club_id_out: str | None = None
+    scope_club_name_out: str | None = None
+    if club_raw:
+        scoped_club = _get_club_or_404(club_raw, db=db)
+        scope_club_uuid = scoped_club.id
+        scope_club_id_out = str(scoped_club.id)
+        scope_club_name_out = scoped_club.name
+
+    scope_event_uuid = None
+    scope_event_id_out: str | None = None
+    scope_event_title_out: str | None = None
+    if event_raw:
+        scoped_event = _get_event_or_404(event_raw, db=db)
+        scope_event_uuid = scoped_event.id
+        scope_event_id_out = str(scoped_event.id)
+        scope_event_title_out = scoped_event.title
+
+    if scope_event_uuid is not None:
+        event_daily = (
+            db.query(
+                cast(models.EventAttendance.checked_in_at, SqlDate).label("day"),
+                func.count(models.EventAttendance.user_id),
+            )
+            .filter(models.EventAttendance.checked_in_at >= since_dt)
+            .filter(models.EventAttendance.event_id == scope_event_uuid)
+            .group_by(cast(models.EventAttendance.checked_in_at, SqlDate))
+            .all()
+        )
+    elif scope_club_uuid is None:
+        event_daily = (
+            db.query(
+                cast(models.EventAttendance.checked_in_at, SqlDate).label("day"),
+                func.count(models.EventAttendance.user_id),
+            )
+            .filter(models.EventAttendance.checked_in_at >= since_dt)
+            .group_by(cast(models.EventAttendance.checked_in_at, SqlDate))
+            .all()
+        )
+    else:
+        event_daily = []
+
+    club_daily_query = (
+        db.query(
+            cast(models.ClubActivityAttendance.checked_in_at, SqlDate).label("day"),
+            func.count(models.ClubActivityAttendance.user_id),
+        )
+        .filter(models.ClubActivityAttendance.checked_in_at >= since_dt)
+    )
+    if scope_club_uuid is not None:
+        club_daily = (
+            club_daily_query.filter(models.ClubActivityAttendance.club_id == scope_club_uuid)
+            .group_by(cast(models.ClubActivityAttendance.checked_in_at, SqlDate))
+            .all()
+        )
+    elif scope_event_uuid is None:
+        club_daily = club_daily_query.group_by(cast(models.ClubActivityAttendance.checked_in_at, SqlDate)).all()
+    else:
+        club_daily = []
+
+    def _day_key(day: object):
+        if isinstance(day, datetime):
+            return day.date()
+        return day
+
+    event_map = {_day_key(row[0]): int(row[1]) for row in event_daily if row[0] is not None}
+    club_map = {_day_key(row[0]): int(row[1]) for row in club_daily if row[0] is not None}
+
+    daily_out: list[AdminAttendanceDailyPointOut] = []
+    total_event = 0
+    total_club = 0
+    cursor = start_date
+    while cursor <= end_date:
+        ev_c = event_map.get(cursor, 0)
+        cl_c = club_map.get(cursor, 0)
+        total_event += ev_c
+        total_club += cl_c
+        daily_out.append(
+            AdminAttendanceDailyPointOut(
+                date=cursor.isoformat(),
+                event_check_ins=ev_c,
+                club_check_ins=cl_c,
+            )
+        )
+        cursor += timedelta(days=1)
+
+    return AdminAttendanceOverviewOut(
+        daily=daily_out,
+        total_event_check_ins=total_event,
+        total_club_check_ins=total_club,
+        scope_club_id=scope_club_id_out,
+        scope_club_name=scope_club_name_out,
+        scope_event_id=scope_event_id_out,
+        scope_event_title=scope_event_title_out,
     )
 
 

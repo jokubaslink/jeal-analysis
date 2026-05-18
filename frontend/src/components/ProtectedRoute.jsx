@@ -8,7 +8,8 @@ export default function ProtectedRoute({ children }) {
   const hasToken = !!getAuthToken();
 
   if (!isAuthed || !hasToken) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    const returnTo = `${location.pathname}${location.search}`;
+    return <Navigate to="/login" replace state={{ from: returnTo }} />;
   }
   return children;
 }
