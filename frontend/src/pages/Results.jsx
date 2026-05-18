@@ -498,6 +498,11 @@ export default function Results() {
                   <p style={cardBody}>
                     {club.description || "A club aligned with the interests you selected."}
                   </p>
+                  {club.recommendation_explanation ? (
+                    <p style={recommendationExplanation}>
+                      Why: {club.recommendation_explanation}
+                    </p>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -542,6 +547,11 @@ export default function Results() {
                   <p style={cardBody}>
                     {event.description || "An event picked from the interests you selected."}
                   </p>
+                  {event.recommendation_explanation ? (
+                    <p style={recommendationExplanation}>
+                      Why: {event.recommendation_explanation}
+                    </p>
+                  ) : null}
                   <Link to={`/events/${event.id}`} style={eventDetailLink}>
                     View event details →
                   </Link>
@@ -791,6 +801,16 @@ const cardBody = {
   color: "#4b5563",
   fontSize: "14px",
   lineHeight: 1.5,
+};
+
+const recommendationExplanation = {
+  margin: "12px 0 0 0",
+  padding: "8px 10px",
+  borderRadius: "10px",
+  background: "#f1f5f9",
+  color: "#334155",
+  fontSize: "12px",
+  lineHeight: 1.45,
 };
 
 const eventDetailLink = {

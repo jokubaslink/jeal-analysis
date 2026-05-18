@@ -811,6 +811,11 @@ export default function Events() {
                         <p style={styles.cardDescription}>
                           {event.description || "No description provided yet."}
                         </p>
+                        {event.recommendation_explanation ? (
+                          <p style={styles.recommendationExplanation}>
+                            Why: {event.recommendation_explanation}
+                          </p>
+                        ) : null}
 
                         <div style={styles.metaRow}>
                           {event.city ? (
@@ -1323,6 +1328,17 @@ const styles = {
     WebkitLineClamp: 4,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
+  },
+  recommendationExplanation: {
+    margin: 0,
+    padding: "8px 10px",
+    borderRadius: "10px",
+    background: "rgba(255, 255, 255, 0.16)",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "rgba(255, 255, 255, 0.92)",
+    fontSize: "12px",
+    lineHeight: 1.45,
+    textShadow: "0 1px 4px rgba(0, 0, 0, 0.22)",
   },
   metaRow: {
     display: "flex",

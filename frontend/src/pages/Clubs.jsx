@@ -655,6 +655,11 @@ export default function Clubs() {
                       <p style={styles.cardDescription}>
                         {club.description || "No description provided yet."}
                       </p>
+                      {club.recommendation_explanation ? (
+                        <p style={styles.recommendationExplanation}>
+                          Why: {club.recommendation_explanation}
+                        </p>
+                      ) : null}
 
                       <div style={styles.metaRow}>
                         {club.city ? (
@@ -1129,6 +1134,17 @@ const styles = {
     WebkitLineClamp: 4,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
+  },
+  recommendationExplanation: {
+    margin: 0,
+    padding: "8px 10px",
+    borderRadius: "10px",
+    background: "rgba(255, 255, 255, 0.16)",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "rgba(255, 255, 255, 0.92)",
+    fontSize: "12px",
+    lineHeight: 1.45,
+    textShadow: "0 1px 4px rgba(0, 0, 0, 0.22)",
   },
   metaRow: {
     display: "flex",

@@ -439,6 +439,7 @@ class RecommendedClubOut(BaseModel):
     meeting_start_time: str | None = None
     meeting_end_time: str | None = None
     score: int
+    recommendation_explanation: str
 
 
 class FeedbackInput(BaseModel):
@@ -743,6 +744,7 @@ class RecommendedEventOut(BaseModel):
     image_url: str | None = None
     attendee_count: int
     score: int
+    recommendation_explanation: str
 
 
 class AdminEventFeedbackOut(BaseModel):
@@ -1551,6 +1553,110 @@ def _score_event_for_user(
     return (exact_club_interest_matches * 3) + max(event_category_score, club_category_score)
 
 
+def _format_match_names(names: list[str], limit: int = 2) -> str:
+    unique_names = sorted({name.strip() for name in names if name and name.strip()})
+    if not unique_names:
+        return ""
+
+    visible_names = unique_names[:limit]
+    if len(unique_names) == 1:
+        return visible_names[0]
+    if len(unique_names) == 2:
+        return f"{visible_names[0]} and {visible_names[1]}"
+    return f"{visible_names[0]}, {visible_names[1]}, and {len(unique_names) - limit} more"
+
+
+def _club_matching_interest_names(
+    club: models.Club,
+    user_interest_ids: set[uuid.UUID],
+) -> list[str]:
+    if not user_interest_ids:
+        return []
+    return [
+        link.interest.name
+        for link in getattr(club, "interest_links", []) or []
+        if link.interest_id in user_interest_ids and getattr(link, "interest", None)
+    ]
+
+
+def _append_participation_preference_reason(
+    reasons: list[str],
+    participation_preference: str | None,
+    kind: str,
+) -> None:
+    if _normalize_participation_preference(participation_preference) == kind:
+        reasons.append(f"fits your preference for {kind}")
+
+
+def _build_recommendation_explanation(reasons: list[str]) -> str:
+    if not reasons:
+        return "Recommended from your saved interests."
+    if len(reasons) == 1:
+        return f"Recommended because it {reasons[0]}."
+    return f"Recommended because it {', '.join(reasons[:-1])}, and {reasons[-1]}."
+
+
+def _build_club_recommendation_explanation(
+    club: models.Club,
+    category_interest_counts: dict,
+    user_interest_ids: set[uuid.UUID],
+    participation_preference: str | None,
+) -> str:
+    reasons: list[str] = []
+    match_names = _format_match_names(_club_matching_interest_names(club, user_interest_ids))
+    if match_names:
+        reasons.append(f"matches your {match_names} interests")
+    elif category_interest_counts.get(club.category_id, 0) > 0:
+        category_name = club.category.name if club.category else None
+        if category_name:
+            reasons.append(f"fits your {category_name} interest area")
+        else:
+            reasons.append("matches one of your interest areas")
+
+    _append_participation_preference_reason(reasons, participation_preference, "clubs")
+    return _build_recommendation_explanation(reasons)
+
+
+def _event_category_match_name(
+    event: models.Event,
+    category_interest_counts: dict,
+) -> str | None:
+    event_category_score = category_interest_counts.get(event.category_id, 0)
+    club_category_score = (
+        category_interest_counts.get(event.club.category_id, 0) if event.club else 0
+    )
+    if event_category_score <= 0 and club_category_score <= 0:
+        return None
+    if event_category_score >= club_category_score:
+        return event.category.name if event.category else None
+    return event.club.category.name if event.club and event.club.category else None
+
+
+def _build_event_recommendation_explanation(
+    event: models.Event,
+    category_interest_counts: dict,
+    user_interest_ids: set[uuid.UUID],
+    participation_preference: str | None,
+) -> str:
+    reasons: list[str] = []
+    match_names = (
+        _format_match_names(_club_matching_interest_names(event.club, user_interest_ids))
+        if event.club
+        else ""
+    )
+    if match_names:
+        reasons.append(f"matches your {match_names} interests")
+    else:
+        category_name = _event_category_match_name(event, category_interest_counts)
+        if category_name:
+            reasons.append(f"fits your {category_name} interest area")
+        else:
+            reasons.append("matches one of your interest areas")
+
+    _append_participation_preference_reason(reasons, participation_preference, "events")
+    return _build_recommendation_explanation(reasons)
+
+
 def _build_recommended_clubs(
     category_interest_counts: dict,
     user_interest_ids: set[uuid.UUID],
@@ -1566,7 +1672,7 @@ def _build_recommended_clubs(
         db.query(models.Club)
         .options(
             joinedload(models.Club.category),
-            joinedload(models.Club.interest_links),
+            joinedload(models.Club.interest_links).joinedload(models.ClubInterest.interest),
             joinedload(models.Club.memberships),
         )
         .filter(models.Club.is_active.is_(True))
@@ -1609,6 +1715,12 @@ def _build_recommended_clubs(
                 c.meeting_end_time.strftime("%H:%M") if c.meeting_end_time else None
             ),
             score=score,
+            recommendation_explanation=_build_club_recommendation_explanation(
+                c,
+                category_interest_counts,
+                user_interest_ids,
+                participation_preference,
+            ),
         )
         for score, c in top
     ]
@@ -1629,7 +1741,11 @@ def _build_recommended_events(
         db.query(models.Event)
         .options(
             joinedload(models.Event.category),
+            joinedload(models.Event.club).joinedload(models.Club.category),
             joinedload(models.Event.club).joinedload(models.Club.interest_links),
+            joinedload(models.Event.club)
+            .joinedload(models.Club.interest_links)
+            .joinedload(models.ClubInterest.interest),
             joinedload(models.Event.registrations),
         )
         .filter(models.Event.is_active.is_(True))
@@ -1672,6 +1788,12 @@ def _build_recommended_events(
             image_url=e.image_url,
             attendee_count=_event_attendee_count(e),
             score=score,
+            recommendation_explanation=_build_event_recommendation_explanation(
+                e,
+                category_interest_counts,
+                user_interest_ids,
+                participation_preference,
+            ),
         )
         for score, e in top
     ]

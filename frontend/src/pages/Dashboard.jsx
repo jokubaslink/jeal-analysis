@@ -1143,6 +1143,11 @@ export default function Dashboard() {
                       <p style={recommendedClubDescription}>
                         {club.description || "A club aligned with the interests you saved."}
                       </p>
+                      {club.recommendation_explanation ? (
+                        <p style={recommendationExplanation}>
+                          Why: {club.recommendation_explanation}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div style={chipWrap}>
@@ -1198,6 +1203,11 @@ export default function Dashboard() {
                   <p style={recommendedEventDescription}>
                     {event.description || "An upcoming activity selected from the interests you saved."}
                   </p>
+                  {event.recommendation_explanation ? (
+                    <p style={recommendationExplanation}>
+                      Why: {event.recommendation_explanation}
+                    </p>
+                  ) : null}
                   <Link to={`/events/${event.id}`} style={recommendedEventDetailLink}>
                     View event details →
                   </Link>
@@ -1578,6 +1588,16 @@ const recommendedClubDescription = {
   color: "#4b5563",
   fontSize: "14px",
   lineHeight: 1.5,
+};
+
+const recommendationExplanation = {
+  margin: 0,
+  padding: "8px 10px",
+  borderRadius: "10px",
+  background: "#f1f5f9",
+  color: "#334155",
+  fontSize: "12px",
+  lineHeight: 1.45,
 };
 
 const categoryTag = {
