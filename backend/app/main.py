@@ -534,6 +534,7 @@ class EventCreate(BaseModel):
     is_online: bool | None = None
     registration_url: str | None = Field(None, max_length=500)
     image_url: str | None = Field(None, max_length=1000)
+    max_capacity: int | None = Field(None, ge=1)
 
     @field_validator("latitude")
     @classmethod
@@ -621,6 +622,7 @@ class EventUpdate(BaseModel):
     is_online: bool | None = None
     registration_url: str | None = None
     image_url: str | None = None
+    max_capacity: int | None = Field(None, ge=1)
 
     @field_validator("latitude")
     @classmethod
@@ -715,10 +717,26 @@ class EventOut(BaseModel):
     registration_url: str | None = None
     image_url: str | None = None
     attendee_count: int
+    max_capacity: int | None = None
+    remaining_capacity: int | None = None
+    waitlist_count: int
+    capacity_status: str
 
 
 class RegisteredEventOut(EventOut):
     registered_at: str
+
+
+class EventRegistrationStatusOut(EventOut):
+    registration_status: str
+    registered_at: str | None = None
+    waitlisted_at: str | None = None
+    waitlist_position: int | None = None
+
+
+class WaitlistedEventOut(EventOut):
+    waitlisted_at: str
+    waitlist_position: int
 
 
 class EventVisibilityUpdate(BaseModel):
@@ -743,6 +761,10 @@ class RecommendedEventOut(BaseModel):
     registration_url: str | None = None
     image_url: str | None = None
     attendee_count: int
+    max_capacity: int | None = None
+    remaining_capacity: int | None = None
+    waitlist_count: int
+    capacity_status: str
     score: int
     recommendation_explanation: str
 
@@ -941,6 +963,35 @@ def _club_member_count(club: models.Club) -> int:
 def _event_attendee_count(event: models.Event) -> int:
     registrations = getattr(event, "registrations", None)
     return len(registrations) if registrations is not None else 0
+
+
+def _event_waitlist_count(event: models.Event) -> int:
+    waitlist_entries = getattr(event, "waitlist_entries", None)
+    return len(waitlist_entries) if waitlist_entries is not None else 0
+
+
+def _event_remaining_capacity(event: models.Event) -> int | None:
+    if event.max_capacity is None:
+        return None
+    return max(0, event.max_capacity - _event_attendee_count(event))
+
+
+def _event_capacity_status(event: models.Event) -> str:
+    if event.max_capacity is None:
+        return "available"
+    if _event_remaining_capacity(event) == 0:
+        return "full"
+    return "available"
+
+
+def _event_waitlist_position(entry: models.UserEventWaitlistEntry, db: Session) -> int:
+    earlier_count = (
+        db.query(models.UserEventWaitlistEntry)
+        .filter(models.UserEventWaitlistEntry.event_id == entry.event_id)
+        .filter(models.UserEventWaitlistEntry.created_at < entry.created_at)
+        .count()
+    )
+    return earlier_count + 1
 
 
 def _serialize_club(club: models.Club) -> ClubOut:
@@ -1747,6 +1798,7 @@ def _build_recommended_events(
             .joinedload(models.Club.interest_links)
             .joinedload(models.ClubInterest.interest),
             joinedload(models.Event.registrations),
+            joinedload(models.Event.waitlist_entries),
         )
         .filter(models.Event.is_active.is_(True))
         .filter(models.Event.start_time > func.now())
@@ -1787,6 +1839,10 @@ def _build_recommended_events(
             registration_url=e.registration_url,
             image_url=e.image_url,
             attendee_count=_event_attendee_count(e),
+            max_capacity=e.max_capacity,
+            remaining_capacity=_event_remaining_capacity(e),
+            waitlist_count=_event_waitlist_count(e),
+            capacity_status=_event_capacity_status(e),
             score=score,
             recommendation_explanation=_build_event_recommendation_explanation(
                 e,
@@ -1812,6 +1868,7 @@ def _build_events_query(
             joinedload(models.Event.category),
             joinedload(models.Event.club),
             joinedload(models.Event.registrations),
+            joinedload(models.Event.waitlist_entries),
         )
         .join(
             models.InterestCategory,
@@ -1871,6 +1928,10 @@ def _serialize_event(event: models.Event) -> EventOut:
         registration_url=event.registration_url,
         image_url=event.image_url,
         attendee_count=_event_attendee_count(event),
+        max_capacity=event.max_capacity,
+        remaining_capacity=_event_remaining_capacity(event),
+        waitlist_count=_event_waitlist_count(event),
+        capacity_status=_event_capacity_status(event),
     )
 
 
@@ -1895,7 +1956,39 @@ def _serialize_registered_event(
         registration_url=event.registration_url,
         image_url=event.image_url,
         attendee_count=_event_attendee_count(event),
+        max_capacity=event.max_capacity,
+        remaining_capacity=_event_remaining_capacity(event),
+        waitlist_count=_event_waitlist_count(event),
+        capacity_status=_event_capacity_status(event),
         registered_at=registration.created_at.isoformat(),
+    )
+
+
+def _serialize_event_registration_status(
+    event: models.Event,
+    *,
+    registration_status: str,
+    registered_at: datetime | None = None,
+    waitlisted_at: datetime | None = None,
+    waitlist_position: int | None = None,
+) -> EventRegistrationStatusOut:
+    return EventRegistrationStatusOut(
+        **_serialize_event(event).model_dump(),
+        registration_status=registration_status,
+        registered_at=registered_at.isoformat() if registered_at else None,
+        waitlisted_at=waitlisted_at.isoformat() if waitlisted_at else None,
+        waitlist_position=waitlist_position,
+    )
+
+
+def _serialize_waitlisted_event(
+    waitlist_entry: models.UserEventWaitlistEntry,
+    db: Session,
+) -> WaitlistedEventOut:
+    return WaitlistedEventOut(
+        **_serialize_event(waitlist_entry.event).model_dump(),
+        waitlisted_at=waitlist_entry.created_at.isoformat(),
+        waitlist_position=_event_waitlist_position(waitlist_entry, db),
     )
 
 
@@ -1919,6 +2012,7 @@ def _get_event_or_404(
             joinedload(models.Event.category),
             joinedload(models.Event.club),
             joinedload(models.Event.registrations),
+            joinedload(models.Event.waitlist_entries),
         )
         .filter(models.Event.id == event_uuid)
     )
@@ -2512,6 +2606,7 @@ def create_event(
         is_online=payload.is_online if payload.is_online is not None else False,
         registration_url=payload.registration_url,
         image_url=payload.image_url,
+        max_capacity=payload.max_capacity,
     )
 
     db.add(event)
@@ -2616,6 +2711,7 @@ def list_registered_events(
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.category),
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.club),
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.registrations),
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.waitlist_entries),
         )
         .join(models.Event, models.UserEventRegistration.event_id == models.Event.id)
         .filter(models.UserEventRegistration.user_id == user_uuid)
@@ -2627,7 +2723,85 @@ def list_registered_events(
     return [_serialize_registered_event(registration) for registration in registrations]
 
 
-@app.post("/events/{event_id}/register", response_model=RegisteredEventOut)
+@app.get("/users/{user_id}/waitlisted-events", response_model=list[WaitlistedEventOut])
+def list_waitlisted_events(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format.",
+        )
+
+    if current_user.id != user_uuid and not bool(current_user.is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own waitlisted events.",
+        )
+
+    waitlist_entries = (
+        db.query(models.UserEventWaitlistEntry)
+        .options(
+            joinedload(models.UserEventWaitlistEntry.event).joinedload(models.Event.category),
+            joinedload(models.UserEventWaitlistEntry.event).joinedload(models.Event.club),
+            joinedload(models.UserEventWaitlistEntry.event).joinedload(models.Event.registrations),
+            joinedload(models.UserEventWaitlistEntry.event).joinedload(models.Event.waitlist_entries),
+        )
+        .join(models.Event, models.UserEventWaitlistEntry.event_id == models.Event.id)
+        .filter(models.UserEventWaitlistEntry.user_id == user_uuid)
+        .order_by(models.Event.start_time.asc())
+        .all()
+    )
+    return [_serialize_waitlisted_event(entry, db) for entry in waitlist_entries]
+
+
+def _promote_next_waitlisted_user(event_id: uuid.UUID, db: Session) -> None:
+    event = (
+        db.query(models.Event)
+        .filter(models.Event.id == event_id)
+        .first()
+    )
+    if not event or event.max_capacity is None:
+        return
+
+    registered_count = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.event_id == event_id)
+        .count()
+    )
+    if registered_count >= event.max_capacity:
+        return
+
+    next_entry = (
+        db.query(models.UserEventWaitlistEntry)
+        .filter(models.UserEventWaitlistEntry.event_id == event_id)
+        .order_by(models.UserEventWaitlistEntry.created_at.asc())
+        .first()
+    )
+    if not next_entry:
+        return
+
+    existing_registration = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.user_id == next_entry.user_id)
+        .filter(models.UserEventRegistration.event_id == event_id)
+        .first()
+    )
+    if existing_registration is None:
+        db.add(
+            models.UserEventRegistration(
+                user_id=next_entry.user_id,
+                event_id=event_id,
+            )
+        )
+    db.delete(next_entry)
+
+
+@app.post("/events/{event_id}/register", response_model=EventRegistrationStatusOut)
 def register_for_event(
     event_id: str,
     current_user: models.User = Depends(get_current_user),
@@ -2650,6 +2824,63 @@ def register_for_event(
         .filter(models.UserEventRegistration.event_id == event.id)
         .first()
     )
+    waitlist_entry = (
+        db.query(models.UserEventWaitlistEntry)
+        .filter(models.UserEventWaitlistEntry.user_id == current_user.id)
+        .filter(models.UserEventWaitlistEntry.event_id == event.id)
+        .first()
+    )
+
+    if registration is not None:
+        return _serialize_event_registration_status(
+            event,
+            registration_status="registered",
+            registered_at=registration.created_at,
+        )
+
+    if _event_remaining_capacity(event) != 0 and _event_waitlist_count(event) > 0:
+        _promote_next_waitlisted_user(event.id, db)
+        db.commit()
+        event = _get_event_or_404(event_id, db=db, active_only=True)
+        registration = (
+            db.query(models.UserEventRegistration)
+            .filter(models.UserEventRegistration.user_id == current_user.id)
+            .filter(models.UserEventRegistration.event_id == event.id)
+            .first()
+        )
+        waitlist_entry = (
+            db.query(models.UserEventWaitlistEntry)
+            .filter(models.UserEventWaitlistEntry.user_id == current_user.id)
+            .filter(models.UserEventWaitlistEntry.event_id == event.id)
+            .first()
+        )
+        if registration is not None:
+            return _serialize_event_registration_status(
+                event,
+                registration_status="registered",
+                registered_at=registration.created_at,
+            )
+
+    if _event_remaining_capacity(event) == 0:
+        if waitlist_entry is None:
+            waitlist_entry = models.UserEventWaitlistEntry(
+                user_id=current_user.id,
+                event_id=event.id,
+            )
+            db.add(waitlist_entry)
+            db.commit()
+            db.refresh(waitlist_entry)
+
+        event = _get_event_or_404(event_id, db=db, active_only=True)
+        return _serialize_event_registration_status(
+            event,
+            registration_status="waitlisted",
+            waitlisted_at=waitlist_entry.created_at,
+            waitlist_position=_event_waitlist_position(waitlist_entry, db),
+        )
+
+    if waitlist_entry is not None:
+        db.delete(waitlist_entry)
 
     if registration is None:
         registration = models.UserEventRegistration(
@@ -2665,15 +2896,20 @@ def register_for_event(
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.category),
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.club),
             joinedload(models.UserEventRegistration.event).joinedload(models.Event.registrations),
+            joinedload(models.UserEventRegistration.event).joinedload(models.Event.waitlist_entries),
         )
         .filter(models.UserEventRegistration.user_id == current_user.id)
         .filter(models.UserEventRegistration.event_id == event.id)
         .first()
     )
-    return _serialize_registered_event(registration)
+    return _serialize_event_registration_status(
+        registration.event,
+        registration_status="registered",
+        registered_at=registration.created_at,
+    )
 
 
-@app.delete("/events/{event_id}/register", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/events/{event_id}/register", response_model=EventRegistrationStatusOut)
 def unregister_for_event(
     event_id: str,
     current_user: models.User = Depends(get_current_user),
@@ -2688,8 +2924,47 @@ def unregister_for_event(
     )
     if registration:
         db.delete(registration)
+        db.flush()
+        _promote_next_waitlisted_user(event.id, db)
         db.commit()
-    return
+    else:
+        waitlist_entry = (
+            db.query(models.UserEventWaitlistEntry)
+            .filter(models.UserEventWaitlistEntry.user_id == current_user.id)
+            .filter(models.UserEventWaitlistEntry.event_id == event.id)
+            .first()
+        )
+        if waitlist_entry:
+            db.delete(waitlist_entry)
+            db.commit()
+
+    event = _get_event_or_404(event_id, db=db)
+    current_registration = (
+        db.query(models.UserEventRegistration)
+        .filter(models.UserEventRegistration.user_id == current_user.id)
+        .filter(models.UserEventRegistration.event_id == event.id)
+        .first()
+    )
+    current_waitlist_entry = (
+        db.query(models.UserEventWaitlistEntry)
+        .filter(models.UserEventWaitlistEntry.user_id == current_user.id)
+        .filter(models.UserEventWaitlistEntry.event_id == event.id)
+        .first()
+    )
+    if current_registration:
+        return _serialize_event_registration_status(
+            event,
+            registration_status="registered",
+            registered_at=current_registration.created_at,
+        )
+    if current_waitlist_entry:
+        return _serialize_event_registration_status(
+            event,
+            registration_status="waitlisted",
+            waitlisted_at=current_waitlist_entry.created_at,
+            waitlist_position=_event_waitlist_position(current_waitlist_entry, db),
+        )
+    return _serialize_event_registration_status(event, registration_status="none")
 
 
 @app.get("/events/{event_id}/feedback", response_model=EventFeedbackOut | None)
@@ -3761,6 +4036,8 @@ def update_event(event_id: str, payload: EventUpdate, db: Session = Depends(get_
         event.registration_url = data["registration_url"]
     if "image_url" in data:
         event.image_url = data["image_url"]
+    if "max_capacity" in data:
+        event.max_capacity = data["max_capacity"]
 
     db.commit()
     db.refresh(event)

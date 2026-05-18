@@ -137,6 +137,7 @@ export function validateEventAdminForm({
   longitude,
   registrationUrl,
   imageUrl,
+  maxCapacity,
 }) {
   const errors = {};
 
@@ -202,6 +203,19 @@ export function validateEventAdminForm({
   const img = validateOptionalHttpUrl(imageUrl, "Image URL", 1000);
   if (!img.ok) errors.image_url = img.error;
 
+  let capacityValue = null;
+  const capacityRaw = (maxCapacity || "").trim();
+  if (capacityRaw !== "") {
+    const parsed = Number(capacityRaw);
+    if (!Number.isInteger(parsed)) {
+      errors.max_capacity = "Capacity must be a whole number.";
+    } else if (parsed < 1) {
+      errors.max_capacity = "Capacity must be at least 1.";
+    } else {
+      capacityValue = parsed;
+    }
+  }
+
   return {
     errors,
     startIso,
@@ -215,6 +229,7 @@ export function validateEventAdminForm({
       longitude: lonValue,
       registration_url: reg.ok ? reg.value : null,
       image_url: img.ok ? img.value : null,
+      max_capacity: capacityValue,
     },
   };
 }

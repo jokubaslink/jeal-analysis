@@ -40,6 +40,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    waitlisted_events = relationship(
+        "UserEventWaitlistEntry",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     event_feedback_entries = relationship(
         "EventFeedback",
         back_populates="user",
@@ -251,6 +256,7 @@ class Event(Base):
     is_online = Column(Boolean, nullable=False, server_default="false")
     registration_url = Column(String(500), nullable=True)
     image_url = Column(String(1000), nullable=True)
+    max_capacity = Column(Integer, nullable=True)
 
     category = relationship("InterestCategory", back_populates="events")
     club = relationship("Club", back_populates="events")
@@ -258,6 +264,12 @@ class Event(Base):
         "UserEventRegistration",
         back_populates="event",
         cascade="all, delete-orphan",
+    )
+    waitlist_entries = relationship(
+        "UserEventWaitlistEntry",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="UserEventWaitlistEntry.created_at",
     )
     feedback_entries = relationship(
         "EventFeedback",
@@ -291,6 +303,22 @@ class UserEventRegistration(Base):
 
     user = relationship("User", back_populates="registered_events")
     event = relationship("Event", back_populates="registrations")
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class UserEventWaitlistEntry(Base):
+    __tablename__ = "user_event_waitlist_entries"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+
+    user = relationship("User", back_populates="waitlisted_events")
+    event = relationship("Event", back_populates="waitlist_entries")
 
     created_at = Column(
         DateTime(timezone=True),

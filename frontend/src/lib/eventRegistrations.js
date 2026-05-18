@@ -8,8 +8,18 @@ export async function fetchRegisteredEvents(userId, fetcher = apiFetch) {
   return Array.isArray(payload) ? payload : [];
 }
 
+export async function fetchWaitlistedEvents(userId, fetcher = apiFetch) {
+  if (!userId) return [];
+  const payload = await fetcher(`/users/${userId}/waitlisted-events`);
+  return Array.isArray(payload) ? payload : [];
+}
+
 export function createRegisteredEventIdSet(registeredEvents) {
   return new Set((registeredEvents || []).map((event) => String(event.id)));
+}
+
+export function createWaitlistedEventIdSet(waitlistedEvents) {
+  return new Set((waitlistedEvents || []).map((event) => String(event.id)));
 }
 
 export function emitEventRegistrationChanged(detail) {

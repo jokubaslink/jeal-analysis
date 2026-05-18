@@ -4,8 +4,10 @@ import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import {
   createRegisteredEventIdSet,
+  createWaitlistedEventIdSet,
   emitEventRegistrationChanged,
   fetchRegisteredEvents,
+  fetchWaitlistedEvents,
   subscribeToEventRegistrationChanges,
 } from "../lib/eventRegistrations.js";
 import {
@@ -106,6 +108,7 @@ export default function Events() {
   const [customTo, setCustomTo] = useState(toDateInputValue(addDays(new Date(), 30)));
   const [activeIndex, setActiveIndex] = useState(0);
   const [registeredEventIds, setRegisteredEventIds] = useState(() => new Set());
+  const [waitlistedEventIds, setWaitlistedEventIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
   const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(true);
   const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
@@ -138,6 +141,7 @@ export default function Events() {
           allResult,
           categoriesResult,
           registeredEventsResult,
+          waitlistedEventsResult,
           savedEventsResult,
         ] =
           await Promise.allSettled([
@@ -145,6 +149,7 @@ export default function Events() {
             apiFetch("/events"),
             apiFetch("/interest-categories"),
             userId ? fetchRegisteredEvents(userId) : Promise.resolve([]),
+            userId ? fetchWaitlistedEvents(userId) : Promise.resolve([]),
             userId ? fetchSavedEvents(userId) : Promise.resolve([]),
           ]);
 
@@ -162,13 +167,23 @@ export default function Events() {
             ? recommendedResult.value
             : [];
 
-        const scoreById = new Map();
+        const recommendationById = new Map();
         scored.forEach((event) => {
-          scoreById.set(event.id, event.score ?? 0);
+          recommendationById.set(event.id, {
+            score: event.score ?? 0,
+            recommendation_explanation: event.recommendation_explanation || "",
+          });
         });
 
         const ranked = allEvents
-          .map((event) => ({ ...event, score: scoreById.get(event.id) ?? 0 }))
+          .map((event) => ({
+            ...event,
+            score: recommendationById.get(event.id)?.score ?? 0,
+            recommendation_explanation:
+              recommendationById.get(event.id)?.recommendation_explanation ||
+              event.recommendation_explanation ||
+              "",
+          }))
           .sort((a, b) => {
             if (b.score !== a.score) return b.score - a.score;
             const aTime = a.start_time ? new Date(a.start_time).getTime() : Infinity;
@@ -188,6 +203,11 @@ export default function Events() {
             ? createRegisteredEventIdSet(registeredEventsResult.value)
             : new Set()
         );
+        setWaitlistedEventIds(
+          waitlistedEventsResult.status === "fulfilled"
+            ? createWaitlistedEventIdSet(waitlistedEventsResult.value)
+            : new Set()
+        );
         setSavedEventIds(
           savedEventsResult.status === "fulfilled"
             ? createSavedEventIdSet(savedEventsResult.value)
@@ -197,6 +217,12 @@ export default function Events() {
           setRegistrationErrorMessage(
             registeredEventsResult.reason?.message ||
               "Could not load your event registrations."
+          );
+        }
+        if (waitlistedEventsResult.status === "rejected") {
+          setRegistrationErrorMessage(
+            waitlistedEventsResult.reason?.message ||
+              "Could not load your event waitlist status."
           );
         }
         if (savedEventsResult.status === "rejected") {
@@ -245,6 +271,14 @@ export default function Events() {
           const next = new Set(prev);
           if (type === "registered") next.add(normalizedEventId);
           if (type === "unregistered") next.delete(normalizedEventId);
+          if (type === "waitlisted") next.delete(normalizedEventId);
+          return next;
+        });
+
+        setWaitlistedEventIds((prev) => {
+          const next = new Set(prev);
+          if (type === "waitlisted") next.add(normalizedEventId);
+          if (type === "registered" || type === "unregistered") next.delete(normalizedEventId);
           return next;
         });
 
@@ -252,12 +286,6 @@ export default function Events() {
           prev.map((item) => {
             if (String(item.id) !== normalizedEventId) return item;
             if (event?.id) return { ...item, ...event };
-            if (type === "unregistered") {
-              return {
-                ...item,
-                attendee_count: Math.max(0, (item.attendee_count || 0) - 1),
-              };
-            }
             return item;
           })
         );
@@ -288,7 +316,11 @@ export default function Events() {
 
   const filteredEvents = useMemo(() => {
     const list = events.filter((event) => {
-      if (registeredEventIds.has(String(event.id)) || skippedIds.has(event.id)) {
+      if (
+        registeredEventIds.has(String(event.id)) ||
+        waitlistedEventIds.has(String(event.id)) ||
+        skippedIds.has(event.id)
+      ) {
         return false;
       }
       if (!showPastEvents && isEventPast(event)) {
@@ -318,7 +350,15 @@ export default function Events() {
       const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
       return aTime - bTime;
     });
-  }, [events, registeredEventIds, skippedIds, selectedCategoryId, dateRange, showPastEvents]);
+  }, [
+    events,
+    registeredEventIds,
+    waitlistedEventIds,
+    skippedIds,
+    selectedCategoryId,
+    dateRange,
+    showPastEvents,
+  ]);
 
   const allLoadedArePast =
     events.length > 0 && events.every((event) => isEventPast(event));
@@ -396,18 +436,20 @@ export default function Events() {
 
     const normalizedEventId = String(event.id);
     const isRegistered = registeredEventIds.has(normalizedEventId);
+    const isWaitlisted = waitlistedEventIds.has(normalizedEventId);
 
     setPendingRegistrationEventId(event.id);
     setRegistrationErrorMessage("");
 
     try {
-      if (isRegistered) {
-        await apiFetch(`/events/${event.id}/register`, { method: "DELETE" });
-        const updatedEvent = {
-          ...event,
-          attendee_count: Math.max(0, (event.attendee_count || 0) - 1),
-        };
+      if (isRegistered || isWaitlisted) {
+        const updatedEvent = await apiFetch(`/events/${event.id}/register`, { method: "DELETE" });
         setRegisteredEventIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedEventId);
+          return next;
+        });
+        setWaitlistedEventIds((prev) => {
           const next = new Set(prev);
           next.delete(normalizedEventId);
           return next;
@@ -422,14 +464,32 @@ export default function Events() {
           eventId: event.id,
           event: updatedEvent,
         });
-        setFeedbackToast({ kind: "interested-undo", eventId: event.id });
+        setFeedbackToast({
+          kind: isWaitlisted ? "waitlist-undo" : "interested-undo",
+          eventId: event.id,
+        });
         return;
       }
 
       const registeredEvent = await apiFetch(`/events/${event.id}/register`, {
         method: "POST",
       });
-      setRegisteredEventIds((prev) => new Set(prev).add(normalizedEventId));
+      const status = registeredEvent.registration_status || "registered";
+      if (status === "waitlisted") {
+        setWaitlistedEventIds((prev) => new Set(prev).add(normalizedEventId));
+        setRegisteredEventIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedEventId);
+          return next;
+        });
+      } else {
+        setRegisteredEventIds((prev) => new Set(prev).add(normalizedEventId));
+        setWaitlistedEventIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedEventId);
+          return next;
+        });
+      }
       setEvents((prev) =>
         prev.map((item) =>
           String(item.id) === normalizedEventId ? { ...item, ...registeredEvent } : item
@@ -442,11 +502,14 @@ export default function Events() {
         return next;
       });
       emitEventRegistrationChanged({
-        type: "registered",
+        type: status === "waitlisted" ? "waitlisted" : "registered",
         eventId: event.id,
         event: registeredEvent,
       });
-      setFeedbackToast({ kind: "interested", eventId: event.id });
+      setFeedbackToast({
+        kind: status === "waitlisted" ? "waitlisted" : "interested",
+        eventId: event.id,
+      });
       setTimeout(() => {
         const nextIndex = filteredEvents.findIndex((e) => e.id === event.id) + 1;
         if (nextIndex < filteredEvents.length) scrollToCard(nextIndex);
@@ -728,6 +791,7 @@ export default function Events() {
             {filteredEvents.map((event, index) => {
               const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
               const isRegistered = registeredEventIds.has(String(event.id));
+              const isWaitlisted = waitlistedEventIds.has(String(event.id));
               const isSaved = savedEventIds.has(String(event.id));
               const isSkipped = skippedIds.has(event.id);
               const isActive = index === activeIndex;
@@ -794,6 +858,12 @@ export default function Events() {
                           {isRegistered ? (
                             <span style={styles.likedBadge}>♥ Going</span>
                           ) : null}
+                          {isWaitlisted ? (
+                            <span style={styles.waitlistBadge}>Waitlisted</span>
+                          ) : null}
+                          {!isRegistered && !isWaitlisted && event.capacity_status === "full" ? (
+                            <span style={styles.fullBadge}>Full</span>
+                          ) : null}
                           {isSaved ? (
                             <span style={styles.savedBadge}>Saved</span>
                           ) : null}
@@ -828,7 +898,22 @@ export default function Events() {
                             {event.attendee_count === 1
                               ? "1 attendee"
                               : `${event.attendee_count || 0} attendees`}
+                            {event.max_capacity ? ` / ${event.max_capacity} capacity` : ""}
                           </span>
+                          {event.waitlist_count > 0 ? (
+                            <span style={styles.metaPill}>
+                              {event.waitlist_count === 1
+                                ? "1 on waitlist"
+                                : `${event.waitlist_count} on waitlist`}
+                            </span>
+                          ) : null}
+                          {event.max_capacity && event.capacity_status !== "full" ? (
+                            <span style={styles.metaPill}>
+                              {event.remaining_capacity === 1
+                                ? "1 spot left"
+                                : `${event.remaining_capacity || 0} spots left`}
+                            </span>
+                          ) : null}
                         </div>
 
                         <div style={styles.linkRow}>
@@ -838,11 +923,11 @@ export default function Events() {
                             disabled={
                               pendingRegistrationEventId === event.id ||
                               isLoadingRegistrations ||
-                              (past && !isRegistered)
+                              (past && !isRegistered && !isWaitlisted)
                             }
                             style={{
                               ...styles.membershipButton,
-                              ...(isRegistered
+                              ...(isRegistered || isWaitlisted
                                 ? styles.membershipButtonJoined
                                 : styles.membershipButtonPrimary),
                             }}
@@ -853,7 +938,11 @@ export default function Events() {
                                 ? "Checking..."
                                 : isRegistered
                                   ? "Leave event"
-                                  : "Attend event"}
+                                  : isWaitlisted
+                                    ? "Leave waitlist"
+                                    : event.capacity_status === "full"
+                                      ? "Join waitlist"
+                                      : "Attend event"}
                           </button>
                           <button
                             type="button"
@@ -959,6 +1048,8 @@ export default function Events() {
                           ...styles.toast,
                           ...(feedbackToast.kind === "interested" ||
                           feedbackToast.kind === "interested-undo" ||
+                          feedbackToast.kind === "waitlisted" ||
+                          feedbackToast.kind === "waitlist-undo" ||
                           feedbackToast.kind === "save" ||
                           feedbackToast.kind === "save-undo"
                             ? styles.toastLike
@@ -970,13 +1061,17 @@ export default function Events() {
                           ? "♥ Going"
                           : feedbackToast.kind === "interested-undo"
                             ? "Undo Going"
-                            : feedbackToast.kind === "save"
-                              ? "★ Saved"
-                              : feedbackToast.kind === "save-undo"
-                                ? "Removed"
-                            : feedbackToast.kind === "skip-undo"
-                              ? "Undo Skip"
-                              : "Skipped"}
+                            : feedbackToast.kind === "waitlisted"
+                              ? "Waitlisted"
+                              : feedbackToast.kind === "waitlist-undo"
+                                ? "Left waitlist"
+                                : feedbackToast.kind === "save"
+                                  ? "★ Saved"
+                                  : feedbackToast.kind === "save-undo"
+                                    ? "Removed"
+                                    : feedbackToast.kind === "skip-undo"
+                                      ? "Undo Skip"
+                                      : "Skipped"}
                       </div>
                     ) : null}
                   </article>
@@ -1268,6 +1363,26 @@ const styles = {
     borderRadius: "999px",
     background: "rgba(255, 255, 255, 0.95)",
     color: "#dc2626",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+  waitlistBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(59, 130, 246, 0.95)",
+    color: "white",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+  fullBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(17, 24, 39, 0.82)",
+    color: "white",
     fontSize: "11px",
     fontWeight: 800,
   },

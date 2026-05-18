@@ -299,6 +299,7 @@ export default function AdminEvents() {
             <tr className="border-b border-[var(--color-line)]">
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Title</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Date</th>
+              <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Capacity</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-left text-sm font-semibold">Status</th>
               <th className="px-[length:var(--space-3)] py-[length:var(--space-2)] text-right text-sm font-semibold">Actions</th>
             </tr>
@@ -306,7 +307,7 @@ export default function AdminEvents() {
           <tbody>
             {eventsLoading ? (
               <tr>
-                <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                <td colSpan={5} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
                   Loading events...
                 </td>
               </tr>
@@ -314,7 +315,7 @@ export default function AdminEvents() {
 
             {!eventsLoading && filteredEvents.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
+                <td colSpan={5} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
                   {searchQuery.trim()
                     ? `No events match "${searchQuery.trim()}". Try a different title, category, location, or description.`
                     : "No events found."}
@@ -328,7 +329,14 @@ export default function AdminEvents() {
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{event.title}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{formatDate(event.start_time)}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
+                      {event.max_capacity
+                        ? `${event.attendee_count || 0}/${event.max_capacity}`
+                        : "Unlimited"}
+                      {event.waitlist_count > 0 ? ` · ${event.waitlist_count} waiting` : ""}
+                    </td>
+                    <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
                       {event.is_active ? "Active" : "Inactive"}
+                      {event.capacity_status === "full" ? " · Full" : ""}
                     </td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">
                       <div className="flex justify-end gap-[length:var(--space-3)]">

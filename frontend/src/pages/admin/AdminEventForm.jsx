@@ -32,6 +32,7 @@ export default function AdminEventForm() {
   const [isOnline, setIsOnline] = useState(false);
   const [registrationUrl, setRegistrationUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [maxCapacity, setMaxCapacity] = useState("");
 
   const [submitError, setSubmitError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -65,6 +66,7 @@ export default function AdminEventForm() {
           setIsOnline(Boolean(event.is_online));
           setRegistrationUrl(event.registration_url || "");
           setImageUrl(event.image_url || "");
+          setMaxCapacity(event.max_capacity != null ? String(event.max_capacity) : "");
         }
       } catch (e) {
         if (!ignore) setLoadError(e.message || "Could not load form data.");
@@ -104,6 +106,7 @@ export default function AdminEventForm() {
       longitude,
       registrationUrl,
       imageUrl,
+      maxCapacity,
     });
 
     if (Object.keys(errors).length > 0) {
@@ -128,6 +131,7 @@ export default function AdminEventForm() {
       is_online: isOnline,
       registration_url: trimmed.registration_url,
       image_url: trimmed.image_url,
+      max_capacity: trimmed.max_capacity,
     };
 
     setIsSubmitting(true);
@@ -398,6 +402,26 @@ export default function AdminEventForm() {
           />
           <AdminFieldError id="event-registration-error" message={fieldErrors.registration_url} />
           <p className={hintClass}>Optional. Must include http:// or https:// when provided.</p>
+        </div>
+
+        <div className={fieldClass}>
+          <Label htmlFor="event-capacity">Maximum capacity</Label>
+          <Input
+            id="event-capacity"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Unlimited"
+            value={maxCapacity}
+            onChange={(e) => {
+              setMaxCapacity(e.target.value);
+              clearFieldError("max_capacity");
+            }}
+            aria-invalid={fieldErrors.max_capacity ? "true" : "false"}
+            aria-describedby={fieldErrors.max_capacity ? "event-capacity-error" : undefined}
+          />
+          <AdminFieldError id="event-capacity-error" message={fieldErrors.max_capacity} />
+          <p className={hintClass}>Optional. Leave blank for unlimited registrations.</p>
         </div>
 
         <div className={fieldClass}>

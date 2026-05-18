@@ -3,8 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import {
+  createWaitlistedEventIdSet,
   emitEventRegistrationChanged,
   fetchRegisteredEvents,
+  fetchWaitlistedEvents,
   subscribeToEventRegistrationChanges,
 } from "../lib/eventRegistrations.js";
 import {
@@ -37,6 +39,7 @@ export default function EventDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isRegistered, setIsRegistered] = useState(false);
+  const [isWaitlisted, setIsWaitlisted] = useState(false);
   const [isLoadingRegistration, setIsLoadingRegistration] = useState(true);
   const [isSavingRegistration, setIsSavingRegistration] = useState(false);
   const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
@@ -85,6 +88,7 @@ export default function EventDetail() {
   useEffect(() => {
     if (!userId || !eventId) {
       setIsRegistered(false);
+      setIsWaitlisted(false);
       setIsLoadingRegistration(false);
       setIsSaved(false);
       setIsLoadingSavedState(false);
@@ -101,8 +105,9 @@ export default function EventDetail() {
       setRegistrationErrorMessage("");
       setSavedErrorMessage("");
       try {
-        const [registeredEvents, savedEvents] = await Promise.all([
+        const [registeredEvents, waitlistedEvents, savedEvents] = await Promise.all([
           fetchRegisteredEvents(userId),
+          fetchWaitlistedEvents(userId),
           fetchSavedEvents(userId),
         ]);
         if (!ignore) {
@@ -110,6 +115,7 @@ export default function EventDetail() {
             Array.isArray(registeredEvents) &&
               registeredEvents.some((registeredEvent) => registeredEvent.id === eventId)
           );
+          setIsWaitlisted(createWaitlistedEventIdSet(waitlistedEvents).has(String(eventId)));
           setIsSaved(createSavedEventIdSet(savedEvents).has(String(eventId)));
         }
       } catch (error) {
@@ -243,16 +249,11 @@ export default function EventDetail() {
       ({ type, eventId: changedEventId, event: changedEvent }) => {
         if (String(changedEventId) !== String(eventId)) return;
         setIsRegistered(type === "registered");
+        setIsWaitlisted(type === "waitlisted");
         setEvent((prev) => {
           if (!prev) return prev;
           if (changedEvent?.id) {
             return { ...prev, ...changedEvent };
-          }
-          if (type === "unregistered") {
-            return {
-              ...prev,
-              attendee_count: Math.max(0, (prev.attendee_count || 0) - 1),
-            };
           }
           return prev;
         });
@@ -272,28 +273,24 @@ export default function EventDetail() {
     setRegistrationErrorMessage("");
 
     try {
-      if (isRegistered) {
-        await apiFetch(`/events/${eventId}/register`, { method: "DELETE" });
+      if (isRegistered || isWaitlisted) {
+        const updatedEvent = await apiFetch(`/events/${eventId}/register`, { method: "DELETE" });
         setIsRegistered(false);
-        setEvent((prev) =>
-          prev
-            ? { ...prev, attendee_count: Math.max(0, (prev.attendee_count || 0) - 1) }
-            : prev
-        );
+        setIsWaitlisted(false);
+        setEvent((prev) => (prev ? { ...prev, ...updatedEvent } : prev));
         emitEventRegistrationChanged({
           type: "unregistered",
           eventId,
-          event: {
-            ...event,
-            attendee_count: Math.max(0, (event?.attendee_count || 0) - 1),
-          },
+          event: updatedEvent,
         });
       } else {
         const registeredEvent = await apiFetch(`/events/${eventId}/register`, { method: "POST" });
-        setIsRegistered(true);
+        const status = registeredEvent.registration_status || "registered";
+        setIsRegistered(status === "registered");
+        setIsWaitlisted(status === "waitlisted");
         setEvent((prev) => (prev ? { ...prev, ...registeredEvent } : prev));
         emitEventRegistrationChanged({
-          type: "registered",
+          type: status === "waitlisted" ? "waitlisted" : "registered",
           eventId,
           event: registeredEvent,
         });
@@ -453,7 +450,26 @@ export default function EventDetail() {
             {event.attendee_count === 1
               ? "1 attendee"
               : `${event.attendee_count || 0} attendees`}
+            {event.max_capacity ? ` / ${event.max_capacity} capacity` : ""}
           </span>
+          {event.max_capacity && event.capacity_status !== "full" ? (
+            <span style={metaPill}>
+              {event.remaining_capacity === 1
+                ? "1 spot left"
+                : `${event.remaining_capacity || 0} spots left`}
+            </span>
+          ) : null}
+          {event.capacity_status === "full" && !isRegistered ? (
+            <span style={metaPill}>Full</span>
+          ) : null}
+          {event.waitlist_count > 0 ? (
+            <span style={metaPill}>
+              {event.waitlist_count === 1
+                ? "1 on waitlist"
+                : `${event.waitlist_count} on waitlist`}
+            </span>
+          ) : null}
+          {isWaitlisted ? <span style={metaPill}>You are waitlisted</span> : null}
         </div>
 
         <div style={actionRow}>
@@ -468,9 +484,13 @@ export default function EventDetail() {
             </a>
           ) : null}
           <Button
-            variant={isRegistered ? "secondary" : "primary"}
+            variant={isRegistered || isWaitlisted ? "secondary" : "primary"}
             onClick={handleToggleRegistration}
-            disabled={isSavingRegistration || isLoadingRegistration || (past && !isRegistered)}
+            disabled={
+              isSavingRegistration ||
+              isLoadingRegistration ||
+              (past && !isRegistered && !isWaitlisted)
+            }
           >
             {isLoadingRegistration
               ? "Checking status..."
@@ -478,7 +498,11 @@ export default function EventDetail() {
                 ? "Saving..."
                 : isRegistered
                   ? "Leave event"
-                  : "Attend event"}
+                  : isWaitlisted
+                    ? "Leave waitlist"
+                    : event.capacity_status === "full"
+                      ? "Join waitlist"
+                      : "Attend event"}
           </Button>
           <Button
             variant={isSaved ? "secondary" : "primary"}
@@ -496,8 +520,15 @@ export default function EventDetail() {
                     : "Save for later"}
           </Button>
         </div>
-        {past && !isRegistered ? (
+        {past && !isRegistered && !isWaitlisted ? (
           <p style={helperText}>Past events cannot be added to your dashboard calendar.</p>
+        ) : null}
+        {isWaitlisted ? (
+          <p style={helperText}>
+            You are on the waitlist
+            {event.waitlist_position ? ` at position ${event.waitlist_position}` : ""}. If a spot opens,
+            the first waitlisted user is moved into the event.
+          </p>
         ) : null}
         {registrationErrorMessage ? (
           <Alert variant="error">{registrationErrorMessage}</Alert>
