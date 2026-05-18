@@ -192,6 +192,7 @@ class Club(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     website_url = Column(String(500), nullable=True)
+    image_url = Column(String(1000), nullable=True)
     is_active = Column(Boolean, nullable=False, server_default="true")
     meeting_weekday = Column(Integer, nullable=True)
     meeting_start_time = Column(Time(timezone=False), nullable=True)

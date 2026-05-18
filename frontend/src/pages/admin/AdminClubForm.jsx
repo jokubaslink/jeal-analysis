@@ -34,6 +34,7 @@ export default function AdminClubForm() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [meetingWeekday, setMeetingWeekday] = useState("");
   const [meetingStartTime, setMeetingStartTime] = useState("");
   const [meetingEndTime, setMeetingEndTime] = useState("");
@@ -65,6 +66,7 @@ export default function AdminClubForm() {
           setLatitude(club.latitude != null ? String(club.latitude) : "");
           setLongitude(club.longitude != null ? String(club.longitude) : "");
           setWebsiteUrl(club.website_url || "");
+          setImageUrl(club.image_url || "");
           setMeetingWeekday(
             club.meeting_weekday === null || club.meeting_weekday === undefined
               ? ""
@@ -109,6 +111,7 @@ export default function AdminClubForm() {
       latitude,
       longitude,
       websiteUrl,
+      imageUrl,
       meetingWeekday,
       meetingStartTime,
       meetingEndTime,
@@ -131,6 +134,7 @@ export default function AdminClubForm() {
       latitude: trimmed.latitude,
       longitude: trimmed.longitude,
       website_url: trimmed.website_url,
+      image_url: trimmed.image_url,
       meeting_weekday: trimmed.meeting_weekday,
       meeting_start_time: trimmed.meeting_start_time,
       meeting_end_time: trimmed.meeting_end_time,
@@ -333,6 +337,33 @@ export default function AdminClubForm() {
           />
           <AdminFieldError id="club-website-error" message={fieldErrors.website_url} />
           <p className={hintClass}>Optional. Must include http:// or https:// when provided.</p>
+        </div>
+
+        <div className={fieldClass}>
+          <Label htmlFor="club-image-url">Image URL</Label>
+          <Input
+            id="club-image-url"
+            type="url"
+            placeholder="https://"
+            value={imageUrl}
+            onChange={(e) => {
+              setImageUrl(e.target.value);
+              clearFieldError("image_url");
+            }}
+            maxLength={1000}
+            aria-invalid={fieldErrors.image_url ? "true" : "false"}
+            aria-describedby={fieldErrors.image_url ? "club-image-url-error" : undefined}
+          />
+          <AdminFieldError id="club-image-url-error" message={fieldErrors.image_url} />
+          <p className={hintClass}>Optional. Direct link to a cover image for this club. Must include http:// or https://.</p>
+          {imageUrl && !fieldErrors.image_url ? (
+            <img
+              src={imageUrl}
+              alt="Club image preview"
+              className="mt-[length:var(--space-3)] h-32 w-full rounded-lg object-cover"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          ) : null}
         </div>
 
         <div className="grid gap-[length:var(--space-5)] md:grid-cols-3">

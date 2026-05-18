@@ -506,13 +506,30 @@ export default function Clubs() {
                 <article
                   style={{
                     ...styles.card,
-                    background: gradient,
+                    ...(club.image_url
+                      ? {
+                          backgroundImage: `url(${club.image_url})`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                        }
+                      : { background: gradient }),
                     transform: isActive ? "scale(1)" : "scale(0.96)",
                     opacity: isActive ? 1 : 0.85,
                     filter: isSkipped ? "grayscale(0.6)" : "none",
                   }}
                 >
-                  <div style={styles.cardOverlay} aria-hidden="true" />
+                  <div
+                    style={{
+                      ...styles.cardOverlay,
+                      ...(club.image_url
+                        ? {
+                            background:
+                              "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.2) 40%, rgba(0,0,0,0.72) 100%)",
+                          }
+                        : null),
+                    }}
+                    aria-hidden="true"
+                  />
 
                   <div style={styles.cardContent}>
                     <div style={styles.cardTopRow}>

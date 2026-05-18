@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { Alert, Button, Card, CardDescription, CardTitle } from "../../components/ui/index.js";
@@ -17,6 +17,7 @@ function formatDate(value) {
 export default function AdminClubs() {
   const location = useLocation();
   const [clubs, setClubs] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [clubsError, setClubsError] = useState("");
   const [clubsLoading, setClubsLoading] = useState(false);
   const [flashMessage, setFlashMessage] = useState("");
@@ -148,12 +149,30 @@ export default function AdminClubs() {
     }
   }
 
+  const filteredClubs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return clubs;
+    return clubs.filter(
+      (club) =>
+        (club.name || "").toLowerCase().includes(q) ||
+        (club.category_name || "").toLowerCase().includes(q) ||
+        (club.description || "").toLowerCase().includes(q),
+    );
+  }, [clubs, searchQuery]);
+
   return (
     <Card>
       <CardTitle>All clubs</CardTitle>
       <CardDescription>Browse every club, edit details, and archive outdated clubs so they are hidden from users.</CardDescription>
 
-      <div className="mt-[length:var(--space-7)] flex justify-end">
+      <div className="mt-[length:var(--space-7)] flex flex-wrap items-center justify-between gap-[length:var(--space-4)]">
+        <input
+          type="search"
+          placeholder="Search by name, category, or description…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full max-w-sm rounded-lg border border-[var(--color-line)] bg-white px-[length:var(--space-4)] py-[length:var(--space-2)] text-sm text-[var(--color-ink)] placeholder:text-[var(--color-ink-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        />
         <Link to="/admin/clubs/new">
           <Button type="button">Create club</Button>
         </Link>
@@ -300,16 +319,18 @@ export default function AdminClubs() {
               </tr>
             ) : null}
 
-            {!clubsLoading && clubs.length === 0 ? (
+            {!clubsLoading && filteredClubs.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
-                  No clubs found.
+                  {searchQuery.trim()
+                    ? `No clubs match "${searchQuery.trim()}". Try a different name, category, or description.`
+                    : "No clubs found."}
                 </td>
               </tr>
             ) : null}
 
             {!clubsLoading
-              ? clubs.map((club) => (
+              ? filteredClubs.map((club) => (
                   <tr key={club.id} className="border-b border-[var(--color-line)]">
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.name}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{club.category_name || "—"}</td>

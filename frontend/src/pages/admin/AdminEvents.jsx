@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { Alert, Button, Card, CardDescription, CardTitle } from "../../components/ui/index.js";
@@ -17,6 +17,7 @@ function qrImageUrl(value) {
 export default function AdminEvents() {
   const location = useLocation();
   const [events, setEvents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [eventsError, setEventsError] = useState("");
   const [eventsLoading, setEventsLoading] = useState(false);
   const [flashMessage, setFlashMessage] = useState("");
@@ -147,12 +148,31 @@ export default function AdminEvents() {
     }
   }
 
+  const filteredEvents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter(
+      (event) =>
+        (event.title || "").toLowerCase().includes(q) ||
+        (event.category_name || "").toLowerCase().includes(q) ||
+        (event.location || "").toLowerCase().includes(q) ||
+        (event.description || "").toLowerCase().includes(q),
+    );
+  }, [events, searchQuery]);
+
   return (
     <Card>
       <CardTitle>All events</CardTitle>
       <CardDescription>Browse every event, edit details, and control whether each event is visible to users.</CardDescription>
 
-      <div className="mt-[length:var(--space-7)] flex justify-end">
+      <div className="mt-[length:var(--space-7)] flex flex-wrap items-center justify-between gap-[length:var(--space-4)]">
+        <input
+          type="search"
+          placeholder="Search by title, category, location, or description…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full max-w-sm rounded-lg border border-[var(--color-line)] bg-white px-[length:var(--space-4)] py-[length:var(--space-2)] text-sm text-[var(--color-ink)] placeholder:text-[var(--color-ink-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        />
         <Link to="/admin/events/new">
           <Button type="button">Create event</Button>
         </Link>
@@ -292,16 +312,18 @@ export default function AdminEvents() {
               </tr>
             ) : null}
 
-            {!eventsLoading && events.length === 0 ? (
+            {!eventsLoading && filteredEvents.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-[length:var(--space-3)] py-[length:var(--space-4)] text-[var(--color-ink-subtle)]">
-                  No events found.
+                  {searchQuery.trim()
+                    ? `No events match "${searchQuery.trim()}". Try a different title, category, location, or description.`
+                    : "No events found."}
                 </td>
               </tr>
             ) : null}
 
             {!eventsLoading
-              ? events.map((event) => (
+              ? filteredEvents.map((event) => (
                   <tr key={event.id} className="border-b border-[var(--color-line)]">
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{event.title}</td>
                     <td className="px-[length:var(--space-3)] py-[length:var(--space-3)]">{formatDate(event.start_time)}</td>

@@ -174,6 +174,7 @@ class ClubCreate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     website_url: str | None = Field(None, max_length=500)
+    image_url: str | None = Field(None, max_length=1000)
     is_active: bool | None = None
     meeting_weekday: int | None = Field(None, ge=0, le=6)
     meeting_start_time: str | None = None
@@ -222,6 +223,19 @@ class ClubCreate(BaseModel):
             raise ValueError("website_url must be an http(s) URL.")
         return s
 
+    @field_validator("image_url")
+    @classmethod
+    def image_url_normalize_club_create(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("image_url must be an http(s) URL.")
+        return s
+
     @field_validator("meeting_start_time", "meeting_end_time")
     @classmethod
     def optional_time_string(cls, v: str | None) -> str | None:
@@ -259,6 +273,7 @@ class ClubUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     website_url: str | None = None
+    image_url: str | None = None
     is_active: bool | None = None
     meeting_weekday: int | None = Field(None, ge=0, le=6)
     meeting_start_time: str | None = None
@@ -309,6 +324,19 @@ class ClubUpdate(BaseModel):
             raise ValueError("website_url must be an http(s) URL.")
         return s
 
+    @field_validator("image_url")
+    @classmethod
+    def image_url_normalize_club_update(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        lowered = s.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("image_url must be an http(s) URL.")
+        return s
+
     @field_validator("meeting_start_time", "meeting_end_time")
     @classmethod
     def optional_time_string(cls, v: str | None) -> str | None:
@@ -353,6 +381,7 @@ class ClubOut(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     website_url: str | None = None
+    image_url: str | None = None
     is_active: bool
     member_count: int
     meeting_weekday: int | None = None
@@ -403,6 +432,7 @@ class RecommendedClubOut(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     website_url: str | None = None
+    image_url: str | None = None
     is_active: bool
     member_count: int
     meeting_weekday: int | None = None
@@ -923,6 +953,7 @@ def _serialize_club(club: models.Club) -> ClubOut:
         latitude=club.latitude,
         longitude=club.longitude,
         website_url=club.website_url,
+        image_url=club.image_url,
         is_active=club.is_active,
         member_count=_club_member_count(club),
         meeting_weekday=club.meeting_weekday,
@@ -1567,6 +1598,7 @@ def _build_recommended_clubs(
             city=c.city,
             location=c.location,
             website_url=c.website_url,
+            image_url=c.image_url,
             is_active=c.is_active,
             member_count=_club_member_count(c),
             meeting_weekday=c.meeting_weekday,
@@ -2049,6 +2081,7 @@ def create_club(
         latitude=payload.latitude,
         longitude=payload.longitude,
         website_url=payload.website_url,
+        image_url=payload.image_url,
         is_active=payload.is_active if payload.is_active is not None else True,
         meeting_weekday=payload.meeting_weekday,
         meeting_start_time=(
@@ -2225,6 +2258,8 @@ def update_club(
         club.longitude = data["longitude"]
     if "website_url" in data:
         club.website_url = data["website_url"]
+    if "image_url" in data:
+        club.image_url = data["image_url"]
     if "is_active" in data and data["is_active"] is not None:
         club.is_active = data["is_active"]
     if "meeting_weekday" in data:

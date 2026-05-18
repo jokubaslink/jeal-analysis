@@ -34,6 +34,7 @@ export function validateClubAdminForm({
   latitude,
   longitude,
   websiteUrl,
+  imageUrl,
   meetingWeekday,
   meetingStartTime,
   meetingEndTime,
@@ -82,6 +83,9 @@ export function validateClubAdminForm({
   const url = validateOptionalHttpUrl(websiteUrl, "Website URL");
   if (!url.ok) errors.website_url = url.error;
 
+  const img = validateOptionalHttpUrl(imageUrl, "Image URL", 1000);
+  if (!img.ok) errors.image_url = img.error;
+
   const weekday = (meetingWeekday || "").trim();
   const start = (meetingStartTime || "").trim();
   const end = (meetingEndTime || "").trim();
@@ -113,6 +117,7 @@ export function validateClubAdminForm({
       latitude: latValue,
       longitude: lonValue,
       website_url: url.ok ? url.value : null,
+      image_url: img.ok ? img.value : null,
       meeting_weekday: weekday ? Number(weekday) : null,
       meeting_start_time: start || null,
       meeting_end_time: end || null,
