@@ -7,6 +7,11 @@ import {
   fetchJoinedClubs,
   subscribeToClubMembershipChanges,
 } from "../lib/clubMemberships.js";
+import {
+  createSavedClubIdSet,
+  emitSavedItemChanged,
+  fetchSavedClubs,
+} from "../lib/savedItems.js";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, LoadingState } from "../components/ui/index.js";
 
@@ -36,6 +41,10 @@ export default function ClubDetail() {
   const [isLoadingMembership, setIsLoadingMembership] = useState(true);
   const [isSavingMembership, setIsSavingMembership] = useState(false);
   const [membershipErrorMessage, setMembershipErrorMessage] = useState("");
+  const [isSaved, setIsSaved] = useState(false);
+  const [isLoadingSavedState, setIsLoadingSavedState] = useState(true);
+  const [isSavingSavedState, setIsSavingSavedState] = useState(false);
+  const [savedErrorMessage, setSavedErrorMessage] = useState("");
   const [feedbackContext, setFeedbackContext] = useState({
     opportunities: [],
     submitted_feedback: [],
@@ -87,7 +96,10 @@ export default function ClubDetail() {
     if (!userId || !clubId) {
       setIsMember(false);
       setIsLoadingMembership(false);
+      setIsSaved(false);
+      setIsLoadingSavedState(false);
       setMembershipErrorMessage("");
+      setSavedErrorMessage("");
       return undefined;
     }
 
@@ -95,22 +107,31 @@ export default function ClubDetail() {
 
     const loadMembership = async () => {
       setIsLoadingMembership(true);
+      setIsLoadingSavedState(true);
       setMembershipErrorMessage("");
+      setSavedErrorMessage("");
       try {
-        const list = await fetchJoinedClubs(userId);
+        const [list, savedList] = await Promise.all([
+          fetchJoinedClubs(userId),
+          fetchSavedClubs(userId),
+        ]);
         if (!ignore) {
           setIsMember(
             Array.isArray(list) && list.some((c) => String(c.id) === String(clubId))
           );
+          setIsSaved(createSavedClubIdSet(savedList).has(String(clubId)));
         }
       } catch (error) {
         if (!ignore) {
           setMembershipErrorMessage(
-            error.message || "Could not load your membership status."
+            error.message || "Could not load your club status."
           );
         }
       } finally {
-        if (!ignore) setIsLoadingMembership(false);
+        if (!ignore) {
+          setIsLoadingMembership(false);
+          setIsLoadingSavedState(false);
+        }
       }
     };
 
@@ -229,6 +250,39 @@ export default function ClubDetail() {
       );
     } finally {
       setIsSavingMembership(false);
+    }
+  };
+
+  const handleToggleSavedClub = async () => {
+    if (!clubId) return;
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    setIsSavingSavedState(true);
+    setSavedErrorMessage("");
+
+    try {
+      if (isSaved) {
+        await apiFetch(`/clubs/${clubId}/save`, { method: "DELETE" });
+        setIsSaved(false);
+        emitSavedItemChanged({ itemType: "club", type: "removed", itemId: clubId });
+        return;
+      }
+
+      const savedClub = await apiFetch(`/clubs/${clubId}/save`, { method: "POST" });
+      setIsSaved(true);
+      emitSavedItemChanged({
+        itemType: "club",
+        type: "saved",
+        itemId: clubId,
+        item: savedClub,
+      });
+    } catch (error) {
+      setSavedErrorMessage(error.message || "Could not update saved clubs.");
+    } finally {
+      setIsSavingSavedState(false);
     }
   };
 
@@ -375,12 +429,30 @@ export default function ClubDetail() {
                     ? "Leave club"
                     : "Join club"}
           </Button>
+          <Button
+            variant={isSaved ? "secondary" : "primary"}
+            onClick={handleToggleSavedClub}
+            disabled={isSavingSavedState || isLoadingSavedState}
+          >
+            {isLoadingSavedState
+              ? "Checking saved..."
+              : isSavingSavedState
+                ? "Saving..."
+                : !userId
+                  ? "Log in to save"
+                  : isSaved
+                    ? "Saved"
+                    : "Save for later"}
+          </Button>
         </div>
         {club.is_active === false && !isMember ? (
           <p style={membershipHint}>Inactive clubs are not open for new members.</p>
         ) : null}
         {membershipErrorMessage ? (
           <Alert variant="error">{membershipErrorMessage}</Alert>
+        ) : null}
+        {savedErrorMessage ? (
+          <Alert variant="error">{savedErrorMessage}</Alert>
         ) : null}
       </header>
 

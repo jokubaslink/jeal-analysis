@@ -7,6 +7,11 @@ import {
   fetchRegisteredEvents,
   subscribeToEventRegistrationChanges,
 } from "../lib/eventRegistrations.js";
+import {
+  createSavedEventIdSet,
+  emitSavedItemChanged,
+  fetchSavedEvents,
+} from "../lib/savedItems.js";
 import { isEventPast } from "../lib/eventTime.js";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 
@@ -35,6 +40,10 @@ export default function EventDetail() {
   const [isLoadingRegistration, setIsLoadingRegistration] = useState(true);
   const [isSavingRegistration, setIsSavingRegistration] = useState(false);
   const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
+  const [isSaved, setIsSaved] = useState(false);
+  const [isLoadingSavedState, setIsLoadingSavedState] = useState(true);
+  const [isSavingSavedState, setIsSavingSavedState] = useState(false);
+  const [savedErrorMessage, setSavedErrorMessage] = useState("");
   const [existingFeedback, setExistingFeedback] = useState(null);
   const [isLoadingFeedback, setIsLoadingFeedback] = useState(true);
   const [attendanceStatus, setAttendanceStatus] = useState({ attended: false, checked_in_at: null });
@@ -77,7 +86,10 @@ export default function EventDetail() {
     if (!userId || !eventId) {
       setIsRegistered(false);
       setIsLoadingRegistration(false);
+      setIsSaved(false);
+      setIsLoadingSavedState(false);
       setRegistrationErrorMessage("");
+      setSavedErrorMessage("");
       return undefined;
     }
 
@@ -85,23 +97,32 @@ export default function EventDetail() {
 
     const loadRegistrationState = async () => {
       setIsLoadingRegistration(true);
+      setIsLoadingSavedState(true);
       setRegistrationErrorMessage("");
+      setSavedErrorMessage("");
       try {
-        const registeredEvents = await fetchRegisteredEvents(userId);
+        const [registeredEvents, savedEvents] = await Promise.all([
+          fetchRegisteredEvents(userId),
+          fetchSavedEvents(userId),
+        ]);
         if (!ignore) {
           setIsRegistered(
             Array.isArray(registeredEvents) &&
               registeredEvents.some((registeredEvent) => registeredEvent.id === eventId)
           );
+          setIsSaved(createSavedEventIdSet(savedEvents).has(String(eventId)));
         }
       } catch (error) {
         if (!ignore) {
           setRegistrationErrorMessage(
-            error.message || "Could not load your registration status."
+            error.message || "Could not load your event status."
           );
         }
       } finally {
-        if (!ignore) setIsLoadingRegistration(false);
+        if (!ignore) {
+          setIsLoadingRegistration(false);
+          setIsLoadingSavedState(false);
+        }
       }
     };
 
@@ -286,6 +307,39 @@ export default function EventDetail() {
     }
   };
 
+  const handleToggleSavedEvent = async () => {
+    if (!eventId) return;
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    setIsSavingSavedState(true);
+    setSavedErrorMessage("");
+
+    try {
+      if (isSaved) {
+        await apiFetch(`/events/${eventId}/save`, { method: "DELETE" });
+        setIsSaved(false);
+        emitSavedItemChanged({ itemType: "event", type: "removed", itemId: eventId });
+        return;
+      }
+
+      const savedEvent = await apiFetch(`/events/${eventId}/save`, { method: "POST" });
+      setIsSaved(true);
+      emitSavedItemChanged({
+        itemType: "event",
+        type: "saved",
+        itemId: eventId,
+        item: savedEvent,
+      });
+    } catch (error) {
+      setSavedErrorMessage(error.message || "Could not update saved events.");
+    } finally {
+      setIsSavingSavedState(false);
+    }
+  };
+
   const handleSubmitFeedback = async (submitEvent) => {
     submitEvent.preventDefault();
     if (!eventId) return;
@@ -426,12 +480,30 @@ export default function EventDetail() {
                   ? "Leave event"
                   : "Attend event"}
           </Button>
+          <Button
+            variant={isSaved ? "secondary" : "primary"}
+            onClick={handleToggleSavedEvent}
+            disabled={isSavingSavedState || isLoadingSavedState}
+          >
+            {isLoadingSavedState
+              ? "Checking saved..."
+              : isSavingSavedState
+                ? "Saving..."
+                : !userId
+                  ? "Log in to save"
+                  : isSaved
+                    ? "Saved"
+                    : "Save for later"}
+          </Button>
         </div>
         {past && !isRegistered ? (
           <p style={helperText}>Past events cannot be added to your dashboard calendar.</p>
         ) : null}
         {registrationErrorMessage ? (
           <Alert variant="error">{registrationErrorMessage}</Alert>
+        ) : null}
+        {savedErrorMessage ? (
+          <Alert variant="error">{savedErrorMessage}</Alert>
         ) : null}
       </header>
 

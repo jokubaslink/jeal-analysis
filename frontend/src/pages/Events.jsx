@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import {
@@ -8,6 +8,11 @@ import {
   fetchRegisteredEvents,
   subscribeToEventRegistrationChanges,
 } from "../lib/eventRegistrations.js";
+import {
+  createSavedEventIdSet,
+  emitSavedItemChanged,
+  fetchSavedEvents,
+} from "../lib/savedItems.js";
 import { isEventPast } from "../lib/eventTime.js";
 import EventLocationsMap from "../components/EventLocationsMap.jsx";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
@@ -88,6 +93,7 @@ function formatTimeRange(start, end) {
 }
 
 export default function Events() {
+  const navigate = useNavigate();
   const { userId } = useAuth();
   const [events, setEvents] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -104,6 +110,10 @@ export default function Events() {
   const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(true);
   const [registrationErrorMessage, setRegistrationErrorMessage] = useState("");
   const [pendingRegistrationEventId, setPendingRegistrationEventId] = useState(null);
+  const [savedEventIds, setSavedEventIds] = useState(() => new Set());
+  const [isLoadingSavedEvents, setIsLoadingSavedEvents] = useState(true);
+  const [pendingSavedEventId, setPendingSavedEventId] = useState(null);
+  const [savedEventsErrorMessage, setSavedEventsErrorMessage] = useState("");
   const [feedbackToast, setFeedbackToast] = useState(null);
   const [showPastEvents, setShowPastEvents] = useState(false);
 
@@ -116,17 +126,26 @@ export default function Events() {
     const loadData = async () => {
       setIsLoading(true);
       setIsLoadingRegistrations(true);
+      setIsLoadingSavedEvents(true);
       setErrorMessage("");
       setRegistrationErrorMessage("");
+      setSavedEventsErrorMessage("");
       setSavedInterestCount(null);
 
       try {
-        const [recommendedResult, allResult, categoriesResult, registeredEventsResult] =
+        const [
+          recommendedResult,
+          allResult,
+          categoriesResult,
+          registeredEventsResult,
+          savedEventsResult,
+        ] =
           await Promise.allSettled([
             apiFetch("/events/recommended?limit=50"),
             apiFetch("/events"),
             apiFetch("/interest-categories"),
             userId ? fetchRegisteredEvents(userId) : Promise.resolve([]),
+            userId ? fetchSavedEvents(userId) : Promise.resolve([]),
           ]);
 
         if (ignore) return;
@@ -169,10 +188,20 @@ export default function Events() {
             ? createRegisteredEventIdSet(registeredEventsResult.value)
             : new Set()
         );
+        setSavedEventIds(
+          savedEventsResult.status === "fulfilled"
+            ? createSavedEventIdSet(savedEventsResult.value)
+            : new Set()
+        );
         if (registeredEventsResult.status === "rejected") {
           setRegistrationErrorMessage(
             registeredEventsResult.reason?.message ||
               "Could not load your event registrations."
+          );
+        }
+        if (savedEventsResult.status === "rejected") {
+          setSavedEventsErrorMessage(
+            savedEventsResult.reason?.message || "Could not load your saved events."
           );
         }
 
@@ -196,6 +225,7 @@ export default function Events() {
         if (!ignore) {
           setIsLoading(false);
           setIsLoadingRegistrations(false);
+          setIsLoadingSavedEvents(false);
         }
       }
     };
@@ -430,6 +460,51 @@ export default function Events() {
     }
   };
 
+  const handleToggleSavedEvent = async (event) => {
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    const normalizedEventId = String(event.id);
+    const isSaved = savedEventIds.has(normalizedEventId);
+
+    setPendingSavedEventId(event.id);
+    setSavedEventsErrorMessage("");
+
+    try {
+      if (isSaved) {
+        await apiFetch(`/events/${event.id}/save`, { method: "DELETE" });
+        setSavedEventIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedEventId);
+          return next;
+        });
+        emitSavedItemChanged({
+          itemType: "event",
+          type: "removed",
+          itemId: event.id,
+        });
+        setFeedbackToast({ kind: "save-undo", eventId: event.id });
+        return;
+      }
+
+      const savedEvent = await apiFetch(`/events/${event.id}/save`, { method: "POST" });
+      setSavedEventIds((prev) => new Set(prev).add(normalizedEventId));
+      emitSavedItemChanged({
+        itemType: "event",
+        type: "saved",
+        itemId: event.id,
+        item: savedEvent,
+      });
+      setFeedbackToast({ kind: "save", eventId: event.id });
+    } catch (error) {
+      setSavedEventsErrorMessage(error.message || "Could not update saved events.");
+    } finally {
+      setPendingSavedEventId(null);
+    }
+  };
+
   const handleSkip = (event) => {
     const wasSkipped = skippedIds.has(event.id);
 
@@ -611,6 +686,12 @@ export default function Events() {
         </div>
       ) : null}
 
+      {savedEventsErrorMessage ? (
+        <div style={styles.alertWrap}>
+          <Alert variant="error">{savedEventsErrorMessage}</Alert>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div style={styles.stateWrap}>
           <LoadingState
@@ -647,6 +728,7 @@ export default function Events() {
             {filteredEvents.map((event, index) => {
               const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
               const isRegistered = registeredEventIds.has(String(event.id));
+              const isSaved = savedEventIds.has(String(event.id));
               const isSkipped = skippedIds.has(event.id);
               const isActive = index === activeIndex;
               const isToastForThis = feedbackToast?.eventId === event.id;
@@ -712,6 +794,9 @@ export default function Events() {
                           {isRegistered ? (
                             <span style={styles.likedBadge}>♥ Going</span>
                           ) : null}
+                          {isSaved ? (
+                            <span style={styles.savedBadge}>Saved</span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -765,6 +850,28 @@ export default function Events() {
                                   ? "Leave event"
                                   : "Attend event"}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSavedEvent(event)}
+                            disabled={
+                              pendingSavedEventId === event.id ||
+                              isLoadingSavedEvents
+                            }
+                            style={{
+                              ...styles.membershipButton,
+                              ...(isSaved
+                                ? styles.membershipButtonJoined
+                                : styles.membershipButtonSecondary),
+                            }}
+                          >
+                            {pendingSavedEventId === event.id
+                              ? "Saving..."
+                              : isLoadingSavedEvents
+                                ? "Checking..."
+                                : isSaved
+                                  ? "Saved"
+                                  : "Save"}
+                          </button>
                           <Link to={`/events/${event.id}`} style={styles.detailsButton}>
                             View details →
                           </Link>
@@ -810,23 +917,19 @@ export default function Events() {
 
                       <button
                         type="button"
-                        onClick={() => handleToggleRegistration(event)}
-                        disabled={
-                          pendingRegistrationEventId === event.id ||
-                          isLoadingRegistrations ||
-                          (past && !isRegistered)
-                        }
+                        onClick={() => handleToggleSavedEvent(event)}
+                        disabled={pendingSavedEventId === event.id || isLoadingSavedEvents}
                         style={{
                           ...styles.actionButton,
-                          ...(isRegistered ? styles.actionButtonLikedActive : null),
+                          ...(isSaved ? styles.actionButtonLikedActive : null),
                         }}
-                        aria-label={isRegistered ? "Leave this event" : "Attend this event"}
-                        aria-pressed={isRegistered}
-                        title={isRegistered ? "Leave event" : "Attend event"}
+                        aria-label={isSaved ? "Remove saved event" : "Save this event"}
+                        aria-pressed={isSaved}
+                        title={isSaved ? "Remove saved" : "Save"}
                       >
-                        <span style={styles.actionGlyph}>♥</span>
+                        <span style={styles.actionGlyph}>★</span>
                         <span style={styles.actionLabel}>
-                          {isRegistered ? "Undo" : "Going"}
+                          {isSaved ? "Saved" : "Save"}
                         </span>
                       </button>
 
@@ -850,7 +953,9 @@ export default function Events() {
                         style={{
                           ...styles.toast,
                           ...(feedbackToast.kind === "interested" ||
-                          feedbackToast.kind === "interested-undo"
+                          feedbackToast.kind === "interested-undo" ||
+                          feedbackToast.kind === "save" ||
+                          feedbackToast.kind === "save-undo"
                             ? styles.toastLike
                             : styles.toastSkip),
                         }}
@@ -860,6 +965,10 @@ export default function Events() {
                           ? "♥ Going"
                           : feedbackToast.kind === "interested-undo"
                             ? "Undo Going"
+                            : feedbackToast.kind === "save"
+                              ? "★ Saved"
+                              : feedbackToast.kind === "save-undo"
+                                ? "Removed"
                             : feedbackToast.kind === "skip-undo"
                               ? "Undo Skip"
                               : "Skipped"}
@@ -1147,6 +1256,26 @@ const styles = {
     letterSpacing: "0.04em",
     textTransform: "uppercase",
   },
+  likedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(255, 255, 255, 0.95)",
+    color: "#dc2626",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+  savedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(250, 204, 21, 0.95)",
+    color: "#111827",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
   cardMain: {
     display: "flex",
     flexDirection: "column",
@@ -1237,6 +1366,11 @@ const styles = {
     background: "rgba(255, 255, 255, 0.95)",
     color: "#111827",
     borderColor: "rgba(255, 255, 255, 0.75)",
+  },
+  membershipButtonSecondary: {
+    background: "rgba(255, 255, 255, 0.18)",
+    color: "white",
+    borderColor: "rgba(255, 255, 255, 0.38)",
   },
   detailsButton: {
     display: "inline-flex",

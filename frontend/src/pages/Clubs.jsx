@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import {
@@ -8,6 +8,11 @@ import {
   fetchJoinedClubs,
   subscribeToClubMembershipChanges,
 } from "../lib/clubMemberships.js";
+import {
+  createSavedClubIdSet,
+  emitSavedItemChanged,
+  fetchSavedClubs,
+} from "../lib/savedItems.js";
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
@@ -26,6 +31,7 @@ const CARD_GRADIENTS = [
  * interests) and fall back to alphabetical ordering.
  */
 export default function Clubs() {
+  const navigate = useNavigate();
   const { userId } = useAuth();
   const [clubs, setClubs] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -40,6 +46,10 @@ export default function Clubs() {
   const [isLoadingMemberships, setIsLoadingMemberships] = useState(true);
   const [membershipErrorMessage, setMembershipErrorMessage] = useState("");
   const [pendingMembershipClubId, setPendingMembershipClubId] = useState(null);
+  const [savedClubIds, setSavedClubIds] = useState(() => new Set());
+  const [isLoadingSavedClubs, setIsLoadingSavedClubs] = useState(true);
+  const [pendingSavedClubId, setPendingSavedClubId] = useState(null);
+  const [savedClubsErrorMessage, setSavedClubsErrorMessage] = useState("");
   const [feedbackToast, setFeedbackToast] = useState(null);
 
   const scrollerRef = useRef(null);
@@ -51,17 +61,26 @@ export default function Clubs() {
     const loadData = async () => {
       setIsLoading(true);
       setIsLoadingMemberships(true);
+      setIsLoadingSavedClubs(true);
       setErrorMessage("");
       setMembershipErrorMessage("");
+      setSavedClubsErrorMessage("");
       setSavedInterestCount(null);
 
       try {
-        const [allResult, categoriesResult, recommendedResult, joinedClubsResult] =
+        const [
+          allResult,
+          categoriesResult,
+          recommendedResult,
+          joinedClubsResult,
+          savedClubsResult,
+        ] =
           await Promise.allSettled([
             apiFetch("/clubs"),
             apiFetch("/interest-categories"),
             apiFetch("/clubs/recommended?limit=200"),
             userId ? fetchJoinedClubs(userId) : Promise.resolve([]),
+            userId ? fetchSavedClubs(userId) : Promise.resolve([]),
           ]);
 
         if (ignore) return;
@@ -105,10 +124,20 @@ export default function Clubs() {
             ? createJoinedClubIdSet(joinedClubsResult.value)
             : new Set()
         );
+        setSavedClubIds(
+          savedClubsResult.status === "fulfilled"
+            ? createSavedClubIdSet(savedClubsResult.value)
+            : new Set()
+        );
         if (joinedClubsResult.status === "rejected") {
           setMembershipErrorMessage(
             joinedClubsResult.reason?.message ||
               "Could not load your club memberships."
+          );
+        }
+        if (savedClubsResult.status === "rejected") {
+          setSavedClubsErrorMessage(
+            savedClubsResult.reason?.message || "Could not load your saved clubs."
           );
         }
 
@@ -132,6 +161,7 @@ export default function Clubs() {
         if (!ignore) {
           setIsLoading(false);
           setIsLoadingMemberships(false);
+          setIsLoadingSavedClubs(false);
         }
       }
     };
@@ -360,6 +390,51 @@ export default function Clubs() {
     }
   };
 
+  const handleToggleSavedClub = async (club) => {
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    const normalizedClubId = String(club.id);
+    const isSaved = savedClubIds.has(normalizedClubId);
+
+    setPendingSavedClubId(club.id);
+    setSavedClubsErrorMessage("");
+
+    try {
+      if (isSaved) {
+        await apiFetch(`/clubs/${club.id}/save`, { method: "DELETE" });
+        setSavedClubIds((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedClubId);
+          return next;
+        });
+        emitSavedItemChanged({
+          itemType: "club",
+          type: "removed",
+          itemId: club.id,
+        });
+        setFeedbackToast({ kind: "save-undo", clubId: club.id });
+        return;
+      }
+
+      const savedClub = await apiFetch(`/clubs/${club.id}/save`, { method: "POST" });
+      setSavedClubIds((prev) => new Set(prev).add(normalizedClubId));
+      emitSavedItemChanged({
+        itemType: "club",
+        type: "saved",
+        itemId: club.id,
+        item: savedClub,
+      });
+      setFeedbackToast({ kind: "save", clubId: club.id });
+    } catch (error) {
+      setSavedClubsErrorMessage(error.message || "Could not update saved clubs.");
+    } finally {
+      setPendingSavedClubId(null);
+    }
+  };
+
   const hasActiveFilters = Boolean(selectedCategoryId);
 
   const handleClearFilters = () => {
@@ -461,6 +536,12 @@ export default function Clubs() {
         </div>
       ) : null}
 
+      {savedClubsErrorMessage ? (
+        <div style={styles.alertWrap}>
+          <Alert variant="error">{savedClubsErrorMessage}</Alert>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div style={styles.stateWrap}>
           <LoadingState
@@ -492,6 +573,7 @@ export default function Clubs() {
             const isLiked = likedIds.has(club.id);
             const isSkipped = skippedIds.has(club.id);
             const isJoined = joinedClubIds.has(String(club.id));
+            const isSaved = savedClubIds.has(String(club.id));
             const isActive = index === activeIndex;
             const isToastForThis = feedbackToast?.clubId === club.id;
             const initial = (club.name || "?").trim().charAt(0).toUpperCase();
@@ -557,6 +639,9 @@ export default function Clubs() {
                         {isJoined ? (
                           <span style={styles.joinedBadge}>Joined</span>
                         ) : null}
+                        {isSaved ? (
+                          <span style={styles.savedBadge}>Saved</span>
+                        ) : null}
                       </div>
                     </div>
 
@@ -607,6 +692,28 @@ export default function Clubs() {
                               : isJoined
                                 ? "Leave club"
                                 : "Join club"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSavedClub(club)}
+                          disabled={
+                            pendingSavedClubId === club.id ||
+                            isLoadingSavedClubs
+                          }
+                          style={{
+                            ...styles.membershipButton,
+                            ...(isSaved
+                              ? styles.membershipButtonJoined
+                              : styles.membershipButtonSecondary),
+                          }}
+                        >
+                          {pendingSavedClubId === club.id
+                            ? "Saving..."
+                            : isLoadingSavedClubs
+                              ? "Checking..."
+                              : isSaved
+                                ? "Saved"
+                                : "Save"}
                         </button>
                         <Link to={`/clubs/${club.id}`} style={styles.detailsButton}>
                           View details →
@@ -668,6 +775,24 @@ export default function Clubs() {
                       </span>
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSavedClub(club)}
+                      disabled={pendingSavedClubId === club.id || isLoadingSavedClubs}
+                      style={{
+                        ...styles.actionButton,
+                        ...(isSaved ? styles.actionButtonLikedActive : null),
+                      }}
+                      aria-label={isSaved ? "Remove saved club" : "Save this club"}
+                      aria-pressed={isSaved}
+                      title={isSaved ? "Remove saved" : "Save"}
+                    >
+                      <span style={styles.actionGlyph}>★</span>
+                      <span style={styles.actionLabel}>
+                        {isSaved ? "Saved" : "Save"}
+                      </span>
+                    </button>
+
                     {club.website_url ? (
                       <a
                         href={club.website_url}
@@ -688,7 +813,9 @@ export default function Clubs() {
                       style={{
                         ...styles.toast,
                         ...(feedbackToast.kind === "like" ||
-                        feedbackToast.kind === "like-undo"
+                        feedbackToast.kind === "like-undo" ||
+                        feedbackToast.kind === "save" ||
+                        feedbackToast.kind === "save-undo"
                           ? styles.toastLike
                           : styles.toastSkip),
                       }}
@@ -698,6 +825,10 @@ export default function Clubs() {
                         ? "♥ Liked"
                         : feedbackToast.kind === "like-undo"
                           ? "Undo Like"
+                          : feedbackToast.kind === "save"
+                            ? "★ Saved"
+                            : feedbackToast.kind === "save-undo"
+                              ? "Removed"
                           : feedbackToast.kind === "skip-undo"
                             ? "Undo Skip"
                             : "Skipped"}
@@ -938,6 +1069,16 @@ const styles = {
     fontSize: "11px",
     fontWeight: 800,
   },
+  savedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "rgba(250, 204, 21, 0.95)",
+    color: "#111827",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
   scoreBadge: {
     display: "inline-flex",
     alignItems: "center",
@@ -1031,6 +1172,11 @@ const styles = {
     background: "rgba(255, 255, 255, 0.95)",
     color: "#111827",
     borderColor: "rgba(255, 255, 255, 0.75)",
+  },
+  membershipButtonSecondary: {
+    background: "rgba(255, 255, 255, 0.18)",
+    color: "white",
+    borderColor: "rgba(255, 255, 255, 0.38)",
   },
   detailsButton: {
     display: "inline-flex",

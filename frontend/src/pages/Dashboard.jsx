@@ -9,6 +9,7 @@ import {
   subscribeToClubMembershipChanges,
 } from "../lib/clubMemberships.js";
 import { isEventPast } from "../lib/eventTime.js";
+import { subscribeToSavedItemChanges } from "../lib/savedItems.js";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
 import { Alert, Button, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
@@ -228,6 +229,54 @@ export default function Dashboard() {
           return prev;
         });
         setJoinedClubsErrorMessage("");
+      }),
+    []
+  );
+
+  useEffect(
+    () =>
+      subscribeToSavedItemChanges(({ itemType, type, itemId, item }) => {
+        const normalizedItemId = String(itemId);
+
+        if (itemType === "club") {
+          setSavedClubs((prev) => {
+            if (type === "removed") {
+              return prev.filter((club) => String(club.id) !== normalizedItemId);
+            }
+            if (type === "saved" && item) {
+              const withoutCurrent = prev.filter(
+                (club) => String(club.id) !== normalizedItemId
+              );
+              return [...withoutCurrent, item].sort((a, b) =>
+                (a.name || "").localeCompare(b.name || "", undefined, {
+                  sensitivity: "base",
+                })
+              );
+            }
+            return prev;
+          });
+        }
+
+        if (itemType === "event") {
+          setSavedEvents((prev) => {
+            if (type === "removed") {
+              return prev.filter((event) => String(event.id) !== normalizedItemId);
+            }
+            if (type === "saved" && item) {
+              const withoutCurrent = prev.filter(
+                (event) => String(event.id) !== normalizedItemId
+              );
+              return [...withoutCurrent, item].sort((a, b) => {
+                const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
+                const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
+                return aTime - bTime;
+              });
+            }
+            return prev;
+          });
+        }
+
+        setSavedItemsErrorMessage("");
       }),
     []
   );
