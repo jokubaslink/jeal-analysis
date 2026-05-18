@@ -3,6 +3,10 @@ export const ONBOARDING_SELECTIONS_STORAGE_KEY =
 /** Persists quiz option IDs across register/login redirects (same origin, pre-auth). */
 export const ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY =
   "jeal_onboarding_quiz_answer_option_ids";
+export const ONBOARDING_PARTICIPATION_PREFERENCE_STORAGE_KEY =
+  "jeal_onboarding_participation_preference";
+
+const PARTICIPATION_PREFERENCES = new Set(["clubs", "events", "both"]);
 
 function isStoredInterestId(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -63,4 +67,18 @@ export function writeOnboardingQuizAnswers(optionIds) {
 
 export function clearOnboardingQuizAnswers() {
   localStorage.removeItem(ONBOARDING_QUIZ_ANSWERS_STORAGE_KEY);
+}
+
+export function readOnboardingParticipationPreference() {
+  const raw = localStorage.getItem(ONBOARDING_PARTICIPATION_PREFERENCE_STORAGE_KEY);
+  return PARTICIPATION_PREFERENCES.has(raw) ? raw : "both";
+}
+
+export function writeOnboardingParticipationPreference(preference) {
+  const normalized = PARTICIPATION_PREFERENCES.has(preference) ? preference : "both";
+  localStorage.setItem(ONBOARDING_PARTICIPATION_PREFERENCE_STORAGE_KEY, normalized);
+}
+
+export function clearOnboardingParticipationPreference() {
+  localStorage.removeItem(ONBOARDING_PARTICIPATION_PREFERENCE_STORAGE_KEY);
 }

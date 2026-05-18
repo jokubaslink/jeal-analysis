@@ -19,6 +19,7 @@ class User(Base):
     is_active = Column(Boolean, nullable=False, server_default="true")
     is_admin = Column(Boolean, nullable=False, server_default="false")
     show_in_attendee_suggestions = Column(Boolean, nullable=False, server_default="true")
+    participation_preference = Column(String(20), nullable=False, server_default="both")
 
     # Student profile data
     first_name = Column(String(100), nullable=True)
