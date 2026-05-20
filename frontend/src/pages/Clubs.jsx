@@ -40,6 +40,7 @@ export default function Clubs() {
   const [savedInterestCount, setSavedInterestCount] = useState(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const [likedIds, setLikedIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
   const [joinedClubIds, setJoinedClubIds] = useState(() => new Set());
@@ -204,16 +205,24 @@ export default function Clubs() {
   );
 
   const filteredClubs = useMemo(() => {
-    if (!selectedCategoryId) return clubs;
-    return clubs.filter((club) => club.category_id === selectedCategoryId);
-  }, [clubs, selectedCategoryId]);
+    const q = searchQuery.trim().toLowerCase();
+    return clubs.filter((club) => {
+      if (selectedCategoryId && club.category_id !== selectedCategoryId) return false;
+      if (!q) return true;
+      return (
+        (club.name || "").toLowerCase().includes(q) ||
+        (club.description || "").toLowerCase().includes(q) ||
+        (club.category_name || "").toLowerCase().includes(q)
+      );
+    });
+  }, [clubs, selectedCategoryId, searchQuery]);
 
   useEffect(() => {
     setActiveIndex(0);
     if (scrollerRef.current) {
       scrollerRef.current.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, searchQuery]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -435,10 +444,11 @@ export default function Clubs() {
     }
   };
 
-  const hasActiveFilters = Boolean(selectedCategoryId);
+  const hasActiveFilters = Boolean(selectedCategoryId) || Boolean(searchQuery.trim());
 
   const handleClearFilters = () => {
     setSelectedCategoryId("");
+    setSearchQuery("");
   };
 
   return (
@@ -458,6 +468,17 @@ export default function Clubs() {
             <span>{filteredClubs.length}</span>
           </div>
         ) : null}
+      </div>
+
+      <div style={styles.searchRow}>
+        <input
+          type="search"
+          placeholder="Search clubs by name, description, or category…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={styles.searchInput}
+          aria-label="Search clubs"
+        />
       </div>
 
       {userId &&
@@ -557,12 +578,16 @@ export default function Clubs() {
             title={
               clubs.length === 0
                 ? "No clubs in the directory yet"
-                : "No clubs in this category"
+                : searchQuery.trim()
+                  ? "No clubs match your search"
+                  : "No clubs in this category"
             }
             description={
               clubs.length === 0
                 ? "Once clubs are added, they will appear here."
-                : "Try another category or clear the filter."
+                : searchQuery.trim()
+                  ? "Try different keywords or clear the search."
+                  : "Try another category or clear the filter."
             }
           />
         </div>
@@ -868,6 +893,21 @@ const styles = {
     gap: "16px",
     flexWrap: "wrap",
     padding: "0 4px",
+  },
+  searchRow: {
+    padding: "0 4px",
+  },
+  searchInput: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "999px",
+    border: "1px solid rgba(17, 24, 39, 0.15)",
+    background: "white",
+    fontSize: "14px",
+    color: "#111827",
+    boxSizing: "border-box",
+    outline: "none",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
   },
   interestsCallout: {
     width: "100%",

@@ -4,7 +4,6 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Main from "./pages/Main.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
-import Interests from "./pages/Interests.jsx";
 import Results from "./pages/Results.jsx";
 import Clubs from "./pages/Clubs.jsx";
 import ClubDetail from "./pages/ClubDetail.jsx";
@@ -85,15 +84,6 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/interests"
-          element={
-            <ProtectedRoute>
-              <Interests />
             </ProtectedRoute>
           }
         />

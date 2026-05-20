@@ -8,7 +8,6 @@ import {
   fetchJoinedClubs,
   subscribeToClubMembershipChanges,
 } from "../lib/clubMemberships.js";
-import { isEventPast } from "../lib/eventTime.js";
 import { subscribeToSavedItemChanges } from "../lib/savedItems.js";
 import { syncPendingOnboardingToUser } from "../onboarding/syncOnboardingToUser.js";
 import { Alert, Button, EmptyState, LoadingState, Skeleton } from "../components/ui/index.js";
@@ -17,8 +16,6 @@ import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.j
 export default function Dashboard() {
   const navigate = useNavigate();
   const { userId, logout } = useAuth();
-  const [usersCount, setUsersCount] = useState(null);
-  const [categories, setCategories] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [profile, setProfile] = useState(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
@@ -29,10 +26,6 @@ export default function Dashboard() {
   const [profileErrorMessage, setProfileErrorMessage] = useState("");
   const [userInterests, setUserInterests] = useState([]);
   const [isLoadingInterests, setIsLoadingInterests] = useState(true);
-  const [recommendedClubs, setRecommendedClubs] = useState([]);
-  const [isLoadingRecommendedClubs, setIsLoadingRecommendedClubs] = useState(true);
-  const [recommendedEvents, setRecommendedEvents] = useState([]);
-  const [isLoadingRecommendedEvents, setIsLoadingRecommendedEvents] = useState(true);
   const [registeredEvents, setRegisteredEvents] = useState([]);
   const [isLoadingRegisteredEvents, setIsLoadingRegisteredEvents] = useState(true);
   const [registeredEventsErrorMessage, setRegisteredEventsErrorMessage] = useState("");
@@ -87,22 +80,6 @@ export default function Dashboard() {
             interestsPayload = [];
           }
 
-          let recommendedClubsPayload = [];
-          try {
-            const raw = await apiFetch("/clubs/recommended");
-            recommendedClubsPayload = Array.isArray(raw) ? raw : [];
-          } catch {
-            recommendedClubsPayload = [];
-          }
-
-          let recommendedEventsPayload = [];
-          try {
-            const raw = await apiFetch("/events/recommended");
-            recommendedEventsPayload = Array.isArray(raw) ? raw : [];
-          } catch {
-            recommendedEventsPayload = [];
-          }
-
           let similarUsersPayload = [];
           let similarUsersErr = "";
           try {
@@ -151,8 +128,6 @@ export default function Dashboard() {
 
           if (!ignore) {
             setUserInterests(interestsPayload);
-            setRecommendedClubs(recommendedClubsPayload);
-            setRecommendedEvents(recommendedEventsPayload);
             setSimilarUsers(similarUsersPayload);
             setSimilarUsersErrorMessage(similarUsersErr);
             setRegisteredEvents(registeredEventsPayload);
@@ -166,8 +141,6 @@ export default function Dashboard() {
         } else {
           if (!ignore) {
             setUserInterests([]);
-            setRecommendedClubs([]);
-            setRecommendedEvents([]);
             setSimilarUsers([]);
             setSimilarUsersErrorMessage("");
             setRegisteredEvents([]);
@@ -180,20 +153,12 @@ export default function Dashboard() {
           }
         }
 
-        const users = await apiFetch("/users");
-        const cats = await apiFetch("/interest-categories");
-        if (!ignore) {
-          setUsersCount(Array.isArray(users) ? users.length : 0);
-          setCategories(Array.isArray(cats) ? cats : []);
-        }
       } catch (error) {
         if (!ignore) setErrorMessage(error.message);
       } finally {
         if (!ignore) {
           setIsLoadingProfile(false);
           setIsLoadingInterests(false);
-          setIsLoadingRecommendedClubs(false);
-          setIsLoadingRecommendedEvents(false);
           setIsLoadingSimilarUsers(false);
           setIsLoadingRegisteredEvents(false);
           setIsLoadingSavedItems(false);
@@ -291,11 +256,6 @@ export default function Dashboard() {
     });
     return Array.from(groups.entries());
   }, [userInterests]);
-
-  const upcomingRecommendedEvents = useMemo(
-    () => recommendedEvents.filter((event) => !isEventPast(event)),
-    [recommendedEvents]
-  );
 
   const registeredEventsSorted = useMemo(() => {
     return [...(registeredEvents || [])].sort(
@@ -1102,178 +1062,6 @@ export default function Dashboard() {
           )}
         </section>
 
-        <section style={card}>
-          <div style={profileHeader}>
-            <div>
-              <h2 style={sectionTitle}>Recommended clubs</h2>
-              <p style={profileSubtext}>
-                Discover clubs that match the interests saved on your profile.
-              </p>
-            </div>
-          </div>
-
-          {isLoadingRecommendedClubs ? (
-            <LoadingState
-              align="left"
-              title="Loading club recommendations"
-              description="Finding clubs that fit your saved interests."
-            />
-          ) : !userId ? (
-            <EmptyState
-              align="left"
-              title="Log in to see recommended clubs"
-              description="Your personalized club suggestions will appear here after sign in."
-            />
-          ) : !hasSavedInterests && recommendedClubs.length === 0 ? (
-            <EmptyState
-              align="left"
-              title="No club recommendations yet"
-              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
-              action={interestsEmptyAction}
-            />
-          ) : recommendedClubs.length > 0 ? (
-            <div style={recommendedClubGrid}>
-              {recommendedClubs.map((club) => {
-                const tags = [club.category_name].filter(Boolean);
-
-                return (
-                  <article key={club.id} style={recommendedClubCard}>
-                    <div style={recommendedClubContent}>
-                      <h3 style={recommendedClubTitle}>{club.name}</h3>
-                      <p style={recommendedClubDescription}>
-                        {club.description || "A club aligned with the interests you saved."}
-                      </p>
-                      {club.recommendation_explanation ? (
-                        <p style={recommendationExplanation}>
-                          Why: {club.recommendation_explanation}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div style={chipWrap}>
-                      {tags.map((tag) => (
-                        <span key={`${club.id}-${tag}`} style={categoryTag}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              align="left"
-              title="No club recommendations yet"
-              description="Nothing matched your interests yet. Try adding more topics or check back as new clubs are added."
-            />
-          )}
-        </section>
-
-        <section style={card}>
-          <div style={profileHeader}>
-            <div>
-              <h2 style={sectionTitle}>Recommended events</h2>
-              <p style={profileSubtext}>
-                Explore upcoming activities selected from the interests saved on your profile.
-              </p>
-            </div>
-          </div>
-
-          {isLoadingRecommendedEvents ? (
-            <LoadingState
-              align="left"
-              title="Loading event recommendations"
-              description="Looking for upcoming events that match your interests."
-            />
-          ) : !userId ? (
-            <EmptyState
-              align="left"
-              title="Log in to see recommended events"
-              description="Your personalized event suggestions will appear here after sign in."
-            />
-          ) : upcomingRecommendedEvents.length > 0 ? (
-            <div style={recommendedEventList}>
-              {upcomingRecommendedEvents.map((event) => (
-                <article key={event.id} style={recommendedEventCard}>
-                  <div style={recommendedEventHeader}>
-                    <h3 style={recommendedEventTitle}>{event.title}</h3>
-                    <p style={recommendedEventDate}>{formatEventDate(event.date || event.start_time)}</p>
-                  </div>
-                  <p style={recommendedEventDescription}>
-                    {event.description || "An upcoming activity selected from the interests you saved."}
-                  </p>
-                  {event.recommendation_explanation ? (
-                    <p style={recommendationExplanation}>
-                      Why: {event.recommendation_explanation}
-                    </p>
-                  ) : null}
-                  <Link to={`/events/${event.id}`} style={recommendedEventDetailLink}>
-                    View event details →
-                  </Link>
-                </article>
-              ))}
-            </div>
-          ) : !hasSavedInterests ? (
-            <EmptyState
-              align="left"
-              title="No upcoming event recommendations yet"
-              description={INTERESTS_EMPTY_FOR_RECOMMENDATIONS}
-              action={interestsEmptyAction}
-            />
-          ) : (
-            <EmptyState
-              align="left"
-              title={
-                recommendedEvents.length > 0
-                  ? "No upcoming recommendations"
-                  : "No events available."
-              }
-              description={
-                recommendedEvents.length > 0
-                  ? "Past events are hidden here so your dashboard stays focused on what is next."
-                  : undefined
-              }
-            />
-          )}
-        </section>
-
-        <section style={card}>
-          <h2 style={sectionTitle}>System overview</h2>
-          {usersCount !== null ? (
-            <p style={bodyText}>
-              <strong>{usersCount}</strong> registered user{usersCount === 1 ? "" : "s"}
-            </p>
-          ) : (
-            <LoadingState
-              align="left"
-              title="Loading user statistics"
-              description="Fetching latest system overview metrics."
-            />
-          )}
-
-          {categories.length > 0 ? (
-            <div style={{ marginTop: "16px" }}>
-              <h3 style={subheading}>Interest categories</h3>
-              <ul style={list}>
-                {categories.map((c) => (
-                  <li key={c.id} style={listItem}>
-                    <span style={{ fontWeight: 600 }}>{c.name}</span>
-                    {c.description ? (
-                      <span style={listItemDescription}> – {c.description}</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <EmptyState
-              align="left"
-              title="No interest categories available"
-              description="Add categories to make this section useful."
-            />
-          )}
-        </section>
       </div>
 
       {errorMessage ? <Alert variant="error">{errorMessage}</Alert> : null}
@@ -1323,38 +1111,6 @@ const sectionTitle = {
   color: "#111827",
   fontSize: "20px",
   fontWeight: 700,
-};
-
-const bodyText = {
-  margin: 0,
-  color: "black",
-  fontSize: "14px",
-};
-
-const subheading = {
-  margin: 0,
-  marginBottom: "8px",
-  color: "black",
-  fontSize: "15px",
-  fontWeight: 600,
-};
-
-const list = {
-  listStyle: "none",
-  padding: 0,
-  margin: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
-};
-
-const listItem = {
-  color: "black",
-  fontSize: "14px",
-};
-
-const listItemDescription = {
-  opacity: 0.75,
 };
 
 const detailsList = {
@@ -1552,66 +1308,6 @@ const savedItemMeta = {
   color: "#6b7280",
 };
 
-const recommendedClubGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "14px",
-};
-
-const recommendedClubCard = {
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  gap: "14px",
-  minHeight: "180px",
-  padding: "16px",
-  borderRadius: "16px",
-  border: "1px solid #e5e7eb",
-  background: "linear-gradient(180deg, #ffffff 0%, #f9fafb 100%)",
-};
-
-const recommendedClubContent = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "10px",
-};
-
-const recommendedClubTitle = {
-  margin: 0,
-  color: "#111827",
-  fontSize: "18px",
-  fontWeight: 700,
-};
-
-const recommendedClubDescription = {
-  margin: 0,
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: 1.5,
-};
-
-const recommendationExplanation = {
-  margin: 0,
-  padding: "8px 10px",
-  borderRadius: "10px",
-  background: "#f1f5f9",
-  color: "#334155",
-  fontSize: "12px",
-  lineHeight: 1.45,
-};
-
-const categoryTag = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "6px 12px",
-  borderRadius: "999px",
-  background: "#eef2ff",
-  border: "1px solid #c7d2fe",
-  color: "#3730a3",
-  fontSize: "12px",
-  fontWeight: 700,
-};
-
 const similarPeopleGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
@@ -1680,60 +1376,6 @@ const sharedInterestChip = {
   color: "#065f46",
   fontSize: "12px",
   fontWeight: 700,
-};
-
-const recommendedEventList = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "14px",
-};
-
-const recommendedEventCard = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "10px",
-  padding: "16px",
-  borderRadius: "16px",
-  border: "1px solid #e5e7eb",
-  background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-};
-
-const recommendedEventHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "12px",
-  flexWrap: "wrap",
-};
-
-const recommendedEventTitle = {
-  margin: 0,
-  color: "#111827",
-  fontSize: "18px",
-  fontWeight: 700,
-};
-
-const recommendedEventDate = {
-  margin: 0,
-  color: "#1d4ed8",
-  fontSize: "13px",
-  fontWeight: 700,
-};
-
-const recommendedEventDescription = {
-  margin: 0,
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: 1.5,
-};
-
-const recommendedEventDetailLink = {
-  display: "inline-flex",
-  marginTop: "12px",
-  fontSize: "14px",
-  fontWeight: 700,
-  color: "#1d4ed8",
-  textDecoration: "none",
 };
 
 const attendingLinksBlock = {

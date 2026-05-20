@@ -60,9 +60,6 @@ export default function Layout() {
                 <NavLink to="/dashboard" className={navClass}>
                   Dashboard
                 </NavLink>
-                <NavLink to="/interests" className={navClass}>
-                  Interests
-                </NavLink>
                 {authReady && isAdmin ? (
                   <NavLink to="/admin" className={navClass}>
                     Admin

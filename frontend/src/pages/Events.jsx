@@ -107,6 +107,7 @@ export default function Events() {
   const [customFrom, setCustomFrom] = useState(toDateInputValue(new Date()));
   const [customTo, setCustomTo] = useState(toDateInputValue(addDays(new Date(), 30)));
   const [activeIndex, setActiveIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const [registeredEventIds, setRegisteredEventIds] = useState(() => new Set());
   const [waitlistedEventIds, setWaitlistedEventIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
@@ -315,6 +316,7 @@ export default function Events() {
   }, [datePreset, customFrom, customTo]);
 
   const filteredEvents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     const list = events.filter((event) => {
       if (
         registeredEventIds.has(String(event.id)) ||
@@ -337,6 +339,13 @@ export default function Events() {
       } else if (dateRange.from || dateRange.to) {
         return false;
       }
+      if (q) {
+        const matches =
+          (event.title || "").toLowerCase().includes(q) ||
+          (event.description || "").toLowerCase().includes(q) ||
+          (event.category_name || "").toLowerCase().includes(q);
+        if (!matches) return false;
+      }
       return true;
     });
     if (!showPastEvents) {
@@ -358,6 +367,7 @@ export default function Events() {
     selectedCategoryId,
     dateRange,
     showPastEvents,
+    searchQuery,
   ]);
 
   const allLoadedArePast =
@@ -368,7 +378,7 @@ export default function Events() {
     if (scrollerRef.current) {
       scrollerRef.current.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents]);
+  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents, searchQuery]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -593,12 +603,13 @@ export default function Events() {
   };
 
   const hasActiveFilters =
-    Boolean(selectedCategoryId) || datePreset !== "all" || showPastEvents;
+    Boolean(selectedCategoryId) || datePreset !== "all" || showPastEvents || Boolean(searchQuery.trim());
 
   const handleClearFilters = () => {
     setSelectedCategoryId("");
     setDatePreset("all");
     setShowPastEvents(false);
+    setSearchQuery("");
   };
 
   return (
@@ -618,6 +629,17 @@ export default function Events() {
             <span>{filteredEvents.length}</span>
           </div>
         ) : null}
+      </div>
+
+      <div style={styles.searchRow}>
+        <input
+          type="search"
+          placeholder="Search events by name, description, or category…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={styles.searchInput}
+          aria-label="Search events"
+        />
       </div>
 
       {userId &&
@@ -671,7 +693,7 @@ export default function Events() {
             checked={showPastEvents}
             onChange={(e) => setShowPastEvents(e.target.checked)}
           />
-          <span>Show past events (labeled “Past”)</span>
+          <span>Show past events (labeled "Past")</span>
         </label>
 
         {datePreset === "custom" ? (
@@ -772,14 +794,18 @@ export default function Events() {
                 ? "No upcoming events yet"
                 : allLoadedArePast && !showPastEvents
                   ? "No upcoming events"
-                  : "No events match your filters"
+                  : searchQuery.trim()
+                    ? "No events match your search"
+                    : "No events match your filters"
             }
             description={
               events.length === 0
                 ? "Once events are scheduled, they will appear here."
                 : allLoadedArePast && !showPastEvents
-                  ? "Turn on “Show past events” under When to browse past activities."
-                  : "Try adjusting the date range or category to see more results."
+                  ? 'Turn on "Show past events" under When to browse past activities.'
+                  : searchQuery.trim()
+                    ? "Try different keywords or clear the search."
+                    : "Try adjusting the date range or category to see more results."
             }
           />
         </div>
@@ -1105,6 +1131,21 @@ const styles = {
     gap: "16px",
     flexWrap: "wrap",
     padding: "0 4px",
+  },
+  searchRow: {
+    padding: "0 4px",
+  },
+  searchInput: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "999px",
+    border: "1px solid rgba(17, 24, 39, 0.15)",
+    background: "white",
+    fontSize: "14px",
+    color: "#111827",
+    boxSizing: "border-box",
+    outline: "none",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
   },
   interestsCallout: {
     width: "100%",
