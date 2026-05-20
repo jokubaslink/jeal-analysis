@@ -37,6 +37,13 @@ const DATE_PRESETS = [
   { id: "custom", label: "Custom range" },
 ];
 
+const EVENT_SORT_OPTIONS = [
+  { id: "relevance", label: "Relevance" },
+  { id: "date_asc", label: "Soonest" },
+  { id: "date_desc", label: "Latest" },
+  { id: "popularity", label: "Most popular" },
+];
+
 function startOfDay(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -120,6 +127,7 @@ export default function Events() {
   const [savedEventsErrorMessage, setSavedEventsErrorMessage] = useState("");
   const [feedbackToast, setFeedbackToast] = useState(null);
   const [showPastEvents, setShowPastEvents] = useState(false);
+  const [sortOrder, setSortOrder] = useState("relevance");
   const [selectedMapGroupId, setSelectedMapGroupId] = useState(null);
   const [mapGroupEventIds, setMapGroupEventIds] = useState(null);
 
@@ -353,13 +361,31 @@ export default function Events() {
       }
       return true;
     });
-    if (!showPastEvents) {
+
+    if (sortOrder === "relevance" && !showPastEvents) {
       return list;
     }
+
     return [...list].sort((a, b) => {
-      const aPast = isEventPast(a);
-      const bPast = isEventPast(b);
-      if (aPast !== bPast) return aPast ? 1 : -1;
+      if (showPastEvents) {
+        const aPast = isEventPast(a);
+        const bPast = isEventPast(b);
+        if (aPast !== bPast) return aPast ? 1 : -1;
+      }
+      if (sortOrder === "date_asc") {
+        const aTime = a.start_time ? new Date(a.start_time).getTime() : Infinity;
+        const bTime = b.start_time ? new Date(b.start_time).getTime() : Infinity;
+        return aTime - bTime;
+      }
+      if (sortOrder === "date_desc") {
+        const aTime = a.start_time ? new Date(a.start_time).getTime() : -Infinity;
+        const bTime = b.start_time ? new Date(b.start_time).getTime() : -Infinity;
+        return bTime - aTime;
+      }
+      if (sortOrder === "popularity") {
+        return (b.attendee_count || 0) - (a.attendee_count || 0);
+      }
+      // relevance with showPastEvents: keep score order within upcoming/past groups
       const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
       const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
       return aTime - bTime;
@@ -372,6 +398,7 @@ export default function Events() {
     selectedCategoryId,
     dateRange,
     showPastEvents,
+    sortOrder,
     searchQuery,
     mapGroupEventIds,
   ]);
@@ -384,7 +411,7 @@ export default function Events() {
     if (scrollerRef.current) {
       scrollerRef.current.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents, searchQuery, selectedMapGroupId]);
+  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents, sortOrder, searchQuery, selectedMapGroupId]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -771,6 +798,29 @@ export default function Events() {
           </div>
         </div>
       ) : null}
+
+      <div style={styles.filterGroup} aria-label="Sort options">
+        <div style={styles.filterGroupHeader}>
+          <span style={styles.filterGroupLabel}>Sort</span>
+        </div>
+        <div style={styles.chipScroller} role="tablist">
+          {EVENT_SORT_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setSortOrder(option.id)}
+              style={{
+                ...styles.chip,
+                ...(sortOrder === option.id ? styles.chipActive : null),
+              }}
+              role="tab"
+              aria-selected={sortOrder === option.id}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {errorMessage ? (
         <div style={styles.alertWrap}>

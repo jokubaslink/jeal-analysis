@@ -16,6 +16,12 @@ import {
 import { Alert, Button, EmptyState, LoadingState } from "../components/ui/index.js";
 import { INTERESTS_EMPTY_FOR_RECOMMENDATIONS } from "../lib/emptyStateMessages.js";
 
+const CLUB_SORT_OPTIONS = [
+  { id: "relevance", label: "Relevance" },
+  { id: "name_asc", label: "A–Z" },
+  { id: "popularity", label: "Most popular" },
+];
+
 const CARD_GRADIENTS = [
   "linear-gradient(135deg, #fb7185 0%, #f97316 50%, #facc15 100%)",
   "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)",
@@ -41,6 +47,7 @@ export default function Clubs() {
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState("relevance");
   const [likedIds, setLikedIds] = useState(() => new Set());
   const [skippedIds, setSkippedIds] = useState(() => new Set());
   const [joinedClubIds, setJoinedClubIds] = useState(() => new Set());
@@ -206,7 +213,7 @@ export default function Clubs() {
 
   const filteredClubs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return clubs.filter((club) => {
+    const list = clubs.filter((club) => {
       if (selectedCategoryId && club.category_id !== selectedCategoryId) return false;
       if (!q) return true;
       return (
@@ -215,14 +222,26 @@ export default function Clubs() {
         (club.category_name || "").toLowerCase().includes(q)
       );
     });
-  }, [clubs, selectedCategoryId, searchQuery]);
+
+    if (sortOrder === "relevance") return list;
+
+    return [...list].sort((a, b) => {
+      if (sortOrder === "name_asc") {
+        return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+      }
+      if (sortOrder === "popularity") {
+        return (b.member_count || 0) - (a.member_count || 0);
+      }
+      return 0;
+    });
+  }, [clubs, selectedCategoryId, searchQuery, sortOrder]);
 
   useEffect(() => {
     setActiveIndex(0);
     if (scrollerRef.current) {
       scrollerRef.current.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [selectedCategoryId, searchQuery]);
+  }, [selectedCategoryId, sortOrder, searchQuery]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -544,6 +563,29 @@ export default function Clubs() {
           </div>
         </div>
       ) : null}
+
+      <div style={styles.filterGroup} aria-label="Sort options">
+        <div style={styles.filterGroupHeader}>
+          <span style={styles.filterGroupLabel}>Sort</span>
+        </div>
+        <div style={styles.chipScroller} role="tablist">
+          {CLUB_SORT_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setSortOrder(option.id)}
+              style={{
+                ...styles.chip,
+                ...(sortOrder === option.id ? styles.chipActive : null),
+              }}
+              role="tab"
+              aria-selected={sortOrder === option.id}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {errorMessage ? (
         <div style={styles.alertWrap}>
