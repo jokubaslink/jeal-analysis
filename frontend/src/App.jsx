@@ -4,7 +4,7 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Main from "./pages/Main.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
-import Results from "./pages/Results.jsx";
+// import Results from "./pages/Results.jsx";
 import Clubs from "./pages/Clubs.jsx";
 import ClubDetail from "./pages/ClubDetail.jsx";
 import Events from "./pages/Events.jsx";
@@ -70,14 +70,14 @@ export default function App() {
           }
         />
 
-        <Route
+        {/* <Route
           path="/results"
           element={
             <ProtectedRoute>
               <Results />
             </ProtectedRoute>
           }
-        />
+        /> */}
 
         <Route
           path="/dashboard"

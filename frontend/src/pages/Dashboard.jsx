@@ -466,6 +466,9 @@ export default function Dashboard() {
         <div>
           <h1 style={title}>Dashboard</h1>
         </div>
+        <Button asChild variant="secondary">
+          <Link to="/onboarding">Update quiz answers</Link>
+        </Button>
       </div>
 
       <div style={grid}>

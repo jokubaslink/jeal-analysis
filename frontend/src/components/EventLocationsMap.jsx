@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { divIcon } from "leaflet";
+import { DomEvent, divIcon } from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import { EmptyState } from "./ui/index.js";
 import { getEventMapPoint } from "../lib/eventLocationMap.js";
@@ -117,12 +117,10 @@ function FitMapToMarkers({ groups }) {
   return null;
 }
 
-export default function EventLocationsMap({ events }) {
+export default function EventLocationsMap({ events, selectedGroupId, onGroupSelect }) {
   const groups = useMemo(() => groupEventsByPoint(events), [events]);
-  const [selectedGroupId, setSelectedGroupId] = useState(null);
 
-  const selectedGroup =
-    groups.find((group) => group.id === selectedGroupId) || groups[0] || null;
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId) || null;
 
   return (
     <section style={shell}>
@@ -136,6 +134,19 @@ export default function EventLocationsMap({ events }) {
         </span>
       </div>
 
+      {selectedGroup ? (
+        <div style={filterBar}>
+          <span style={filterBarLabel}>
+            📍 {selectedGroup.point.label} &mdash; {selectedGroup.events.length} event{selectedGroup.events.length === 1 ? "" : "s"}
+          </span>
+          <button type="button" onClick={() => onGroupSelect(null)} style={filterBarClear}>
+            Clear location filter
+          </button>
+        </div>
+      ) : (
+        <p style={mapHint}>Click a pin to filter the event list by location</p>
+      )}
+
       {groups.length === 0 ? (
         <div style={emptyWrap}>
           <EmptyState
@@ -145,91 +156,57 @@ export default function EventLocationsMap({ events }) {
           />
         </div>
       ) : (
-        <div style={layout}>
-          <div style={mapCard}>
-            <MapContainer
-              center={[54.9, 24.0]}
-              zoom={7}
-              scrollWheelZoom={true}
-              style={mapStyle}
-            >
-              <FitMapToMarkers groups={groups} />
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+        <div style={mapCard}>
+          <MapContainer
+            center={[54.9, 24.0]}
+            zoom={7}
+            scrollWheelZoom={true}
+            style={mapStyle}
+          >
+            <FitMapToMarkers groups={groups} />
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
 
-              {groups.map((group) => {
-                const isSelected = group.id === selectedGroup?.id;
-                return (
-                  <Marker
-                    key={group.id}
-                    position={[group.point.latitude, group.point.longitude]}
-                    icon={createMarkerIcon(group.events.length, isSelected)}
-                    eventHandlers={{
-                      click: () => setSelectedGroupId(group.id),
-                    }}
-                  >
-                    <Popup minWidth={250}>
-                      <div style={popupWrap}>
-                        <p style={popupLocation}>{group.point.label}</p>
-                        <p style={popupSubline}>
-                          {group.point.location || group.point.city}
-                        </p>
-                        {group.events.map((event) => (
-                          <div key={event.id} style={popupEvent}>
-                            <p style={popupDate}>{formatEventDate(event.start_time)}</p>
-                            <p style={popupTitle}>{event.title}</p>
-                            <Link to={`/events/${event.id}`} style={popupLink}>
-                              Open event
-                            </Link>
-                          </div>
-                        ))}
-                      </div>
-                    </Popup>
-                  </Marker>
-                );
-              })}
-            </MapContainer>
-          </div>
-
-          <aside style={detailsPanel}>
-            {selectedGroup ? (
-              <>
-                <div style={detailsHeader}>
-                  <div>
-                    <p style={detailsEyebrow}>Selected location</p>
-                    <h3 style={detailsTitle}>{selectedGroup.point.label}</h3>
-                  </div>
-                  <span style={detailsBadge}>{selectedGroup.events.length} event{selectedGroup.events.length === 1 ? "" : "s"}</span>
-                </div>
-
-                <p style={detailsLocation}>
-                  {selectedGroup.point.location || selectedGroup.point.city}
-                </p>
-
-                <div style={eventList}>
-                  {selectedGroup.events.map((event) => (
-                    <article key={event.id} style={eventCard}>
-                      <p style={eventDate}>{formatEventDate(event.start_time)}</p>
-                      <h4 style={eventTitle}>{event.title}</h4>
-                      {event.club_name ? (
-                        <p style={eventHost}>Hosted by {event.club_name}</p>
-                      ) : null}
-                      <p style={eventMeta}>
-                        {event.location
-                          ? `${event.location}${event.city ? `, ${event.city}` : ""}`
-                          : event.city || "Location to be announced"}
+            {groups.map((group) => {
+              const isSelected = group.id === selectedGroupId;
+              return (
+                <Marker
+                  key={group.id}
+                  position={[group.point.latitude, group.point.longitude]}
+                  icon={createMarkerIcon(group.events.length, isSelected)}
+                  eventHandlers={{
+                    click: (e) => {
+                      DomEvent.stopPropagation(e);
+                      onGroupSelect(
+                        group.id,
+                        group.events.map((ev) => ev.id)
+                      );
+                    },
+                  }}
+                >
+                  <Popup minWidth={250}>
+                    <div style={popupWrap}>
+                      <p style={popupLocation}>{group.point.label}</p>
+                      <p style={popupSubline}>
+                        {group.point.location || group.point.city}
                       </p>
-                      <Link to={`/events/${event.id}`} style={eventLink}>
-                        View details →
-                      </Link>
-                    </article>
-                  ))}
-                </div>
-              </>
-            ) : null}
-          </aside>
+                      {group.events.map((event) => (
+                        <div key={event.id} style={popupEvent}>
+                          <p style={popupDate}>{formatEventDate(event.start_time)}</p>
+                          <p style={popupTitle}>{event.title}</p>
+                          <Link to={`/events/${event.id}`} style={popupLink}>
+                            Open event
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+          </MapContainer>
         </div>
       )}
     </section>
@@ -282,14 +259,45 @@ const countBadge = {
   fontWeight: 800,
 };
 
-const emptyWrap = {
-  paddingTop: "8px",
+const filterBar = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "10px 16px",
+  borderRadius: "999px",
+  background: "rgba(37, 99, 235, 0.08)",
+  border: "1px solid rgba(37, 99, 235, 0.18)",
+  flexWrap: "wrap",
 };
 
-const layout = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "16px",
+const filterBarLabel = {
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#1d4ed8",
+};
+
+const filterBarClear = {
+  border: "none",
+  background: "transparent",
+  color: "#1d4ed8",
+  fontSize: "12px",
+  fontWeight: 800,
+  cursor: "pointer",
+  padding: 0,
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+};
+
+const mapHint = {
+  margin: 0,
+  fontSize: "12px",
+  color: "#64748b",
+  fontWeight: 600,
+};
+
+const emptyWrap = {
+  paddingTop: "8px",
 };
 
 const mapCard = {
@@ -304,112 +312,6 @@ const mapStyle = {
   width: "100%",
   height: "100%",
   minHeight: "440px",
-};
-
-const detailsPanel = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "14px",
-  padding: "18px",
-  borderRadius: "24px",
-  background: "linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)",
-  border: "1px solid rgba(148, 163, 184, 0.18)",
-};
-
-const detailsHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "12px",
-  flexWrap: "wrap",
-};
-
-const detailsEyebrow = {
-  margin: 0,
-  fontSize: "11px",
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#64748b",
-};
-
-const detailsTitle = {
-  margin: "6px 0 0 0",
-  fontSize: "22px",
-  color: "#0f172a",
-  lineHeight: 1.15,
-};
-
-const detailsBadge = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "7px 12px",
-  borderRadius: "999px",
-  background: "rgba(37, 99, 235, 0.1)",
-  color: "#1d4ed8",
-  fontSize: "12px",
-  fontWeight: 800,
-};
-
-const detailsLocation = {
-  margin: 0,
-  color: "#475569",
-  fontSize: "14px",
-  lineHeight: 1.5,
-};
-
-const eventList = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "10px",
-};
-
-const eventCard = {
-  padding: "14px",
-  borderRadius: "18px",
-  background: "#ffffff",
-  border: "1px solid rgba(148, 163, 184, 0.18)",
-  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
-};
-
-const eventDate = {
-  margin: 0,
-  fontSize: "12px",
-  fontWeight: 800,
-  color: "#0f766e",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-};
-
-const eventTitle = {
-  margin: "8px 0 0 0",
-  color: "#0f172a",
-  fontSize: "17px",
-  lineHeight: 1.25,
-};
-
-const eventHost = {
-  margin: "6px 0 0 0",
-  color: "#475569",
-  fontSize: "13px",
-  fontWeight: 700,
-};
-
-const eventMeta = {
-  margin: "8px 0 0 0",
-  color: "#64748b",
-  fontSize: "13px",
-  lineHeight: 1.5,
-};
-
-const eventLink = {
-  display: "inline-flex",
-  alignItems: "center",
-  marginTop: "10px",
-  color: "#1d4ed8",
-  fontSize: "13px",
-  fontWeight: 800,
-  textDecoration: "none",
 };
 
 const popupWrap = {

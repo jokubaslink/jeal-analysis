@@ -120,6 +120,8 @@ export default function Events() {
   const [savedEventsErrorMessage, setSavedEventsErrorMessage] = useState("");
   const [feedbackToast, setFeedbackToast] = useState(null);
   const [showPastEvents, setShowPastEvents] = useState(false);
+  const [selectedMapGroupId, setSelectedMapGroupId] = useState(null);
+  const [mapGroupEventIds, setMapGroupEventIds] = useState(null);
 
   const scrollerRef = useRef(null);
   const cardRefs = useRef([]);
@@ -346,6 +348,9 @@ export default function Events() {
           (event.category_name || "").toLowerCase().includes(q);
         if (!matches) return false;
       }
+      if (mapGroupEventIds !== null && !mapGroupEventIds.has(event.id)) {
+        return false;
+      }
       return true;
     });
     if (!showPastEvents) {
@@ -368,6 +373,7 @@ export default function Events() {
     dateRange,
     showPastEvents,
     searchQuery,
+    mapGroupEventIds,
   ]);
 
   const allLoadedArePast =
@@ -378,7 +384,7 @@ export default function Events() {
     if (scrollerRef.current) {
       scrollerRef.current.scrollTo({ top: 0, behavior: "instant" });
     }
-  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents, searchQuery]);
+  }, [selectedCategoryId, datePreset, customFrom, customTo, showPastEvents, searchQuery, selectedMapGroupId]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -603,13 +609,20 @@ export default function Events() {
   };
 
   const hasActiveFilters =
-    Boolean(selectedCategoryId) || datePreset !== "all" || showPastEvents || Boolean(searchQuery.trim());
+    Boolean(selectedCategoryId) || datePreset !== "all" || showPastEvents || Boolean(searchQuery.trim()) || selectedMapGroupId !== null;
 
   const handleClearFilters = () => {
     setSelectedCategoryId("");
     setDatePreset("all");
     setShowPastEvents(false);
     setSearchQuery("");
+    setSelectedMapGroupId(null);
+    setMapGroupEventIds(null);
+  };
+
+  const handleMapGroupSelect = (groupId, eventIds) => {
+    setSelectedMapGroupId(groupId || null);
+    setMapGroupEventIds(groupId ? new Set(eventIds) : null);
   };
 
   return (
@@ -811,7 +824,11 @@ export default function Events() {
         </div>
       ) : (
         <div style={styles.resultsColumn}>
-          <EventLocationsMap events={filteredEvents} />
+          <EventLocationsMap
+            events={filteredEvents}
+            selectedGroupId={selectedMapGroupId}
+            onGroupSelect={handleMapGroupSelect}
+          />
 
           <div ref={scrollerRef} style={styles.scroller}>
             {filteredEvents.map((event, index) => {
