@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import cast, func
 from sqlalchemy.types import Date as SqlDate
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 
 from .database import SessionLocal
@@ -36,6 +36,16 @@ def handle_db_error(_request: Request, exc: OperationalError) -> JSONResponse:
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
             "detail": "Database connection failed. Check that PostgreSQL is running and DATABASE_URL is set (e.g. port 5432 if you use a different port).",
+        },
+    )
+
+
+@app.exception_handler(ProgrammingError)
+def handle_db_programming_error(_request: Request, exc: ProgrammingError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Database schema error. A required table or column is missing — run pending migrations.",
         },
     )
 
