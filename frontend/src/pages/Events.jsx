@@ -974,11 +974,6 @@ export default function Events() {
                         <p style={styles.cardDescription}>
                           {event.description || "No description provided yet."}
                         </p>
-                        {event.recommendation_explanation ? (
-                          <p style={styles.recommendationExplanation}>
-                            Why: {event.recommendation_explanation}
-                          </p>
-                        ) : null}
 
                         <div style={styles.metaRow}>
                           {event.city ? (
@@ -1037,41 +1032,9 @@ export default function Events() {
                                       ? "Join waitlist"
                                       : "Attend event"}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSavedEvent(event)}
-                            disabled={
-                              pendingSavedEventId === event.id ||
-                              isLoadingSavedEvents
-                            }
-                            style={{
-                              ...styles.membershipButton,
-                              ...(isSaved
-                                ? styles.membershipButtonJoined
-                                : styles.membershipButtonSecondary),
-                            }}
-                          >
-                            {pendingSavedEventId === event.id
-                              ? "Saving..."
-                              : isLoadingSavedEvents
-                                ? "Checking..."
-                                : isSaved
-                                  ? "Saved"
-                                  : "Save"}
-                          </button>
                           <Link to={`/events/${event.id}`} style={styles.detailsButton}>
                             View details →
                           </Link>
-                          {event.registration_url ? (
-                            <a
-                              href={event.registration_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={styles.registerButton}
-                            >
-                              Register ↗
-                            </a>
-                          ) : null}
                         </div>
                       </div>
 
@@ -1130,7 +1093,7 @@ export default function Events() {
                           title="Register"
                         >
                           <span style={styles.actionGlyph}>↗</span>
-                          <span style={styles.actionLabel}>Reg</span>
+                          <span style={styles.actionLabel}>Site</span>
                         </a>
                       ) : null}
                     </div>
@@ -1414,7 +1377,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    padding: "20px 96px 24px 20px",
+    padding: "20px 96px 16px 20px",
     boxSizing: "border-box",
     minWidth: 0,
   },
@@ -1507,7 +1470,7 @@ const styles = {
   cardMain: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
+    gap: "8px",
     marginTop: "auto",
   },
   categoryBadge: {
@@ -1548,7 +1511,7 @@ const styles = {
     color: "rgba(255, 255, 255, 0.95)",
     textShadow: "0 1px 6px rgba(0, 0, 0, 0.25)",
     display: "-webkit-box",
-    WebkitLineClamp: 4,
+    WebkitLineClamp: 3,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
   },

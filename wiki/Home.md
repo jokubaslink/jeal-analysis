@@ -11,9 +11,10 @@ JEAL is a personalised web app that helps university students discover clubs and
 | Name | GitHub |
 |------|--------|
 | **Jokūbas Linkevičius** | [@jokubaslink](https://github.com/jokubaslink) |
-| **Ernestas Vyšniauskas** | — |
-| **Agnius Laurinaitis** | — |
-| **Lukrecija Slaviniskaitė** | — |
+| **Ernestas Vyšniauskas** | [@ErnestasVy](https://github.com/ErnestasVy) |
+| **Agnius Laurinaitis** | [@Angliuss](https://github.com/Angliuss) |
+| **Lukrecija Slavinskaitė** | [@LukrecijaSlavinskaite](https://github.com/LukrecijaSlavinskaite) |
+| **Lukas Skirkevičius** | [@lukassk](https://github.com/lukassk) |
 
 ---
 

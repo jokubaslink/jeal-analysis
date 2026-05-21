@@ -765,41 +765,9 @@ export default function Clubs() {
                                 ? "Leave club"
                                 : "Join club"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSavedClub(club)}
-                          disabled={
-                            pendingSavedClubId === club.id ||
-                            isLoadingSavedClubs
-                          }
-                          style={{
-                            ...styles.membershipButton,
-                            ...(isSaved
-                              ? styles.membershipButtonJoined
-                              : styles.membershipButtonSecondary),
-                          }}
-                        >
-                          {pendingSavedClubId === club.id
-                            ? "Saving..."
-                            : isLoadingSavedClubs
-                              ? "Checking..."
-                              : isSaved
-                                ? "Saved"
-                                : "Save"}
-                        </button>
                         <Link to={`/clubs/${club.id}`} style={styles.detailsButton}>
                           View details →
                         </Link>
-                        {club.website_url ? (
-                          <a
-                            href={club.website_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={styles.websiteButton}
-                          >
-                            Visit website ↗
-                          </a>
-                        ) : null}
                       </div>
                     </div>
 
@@ -1097,7 +1065,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    padding: "20px 96px 24px 20px",
+    padding: "20px 96px 16px 20px",
     boxSizing: "border-box",
     minWidth: 0,
   },
@@ -1181,7 +1149,7 @@ const styles = {
   cardMain: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
+    gap: "8px",
     marginTop: "auto",
   },
   categoryBadge: {
@@ -1213,7 +1181,7 @@ const styles = {
     color: "rgba(255, 255, 255, 0.95)",
     textShadow: "0 1px 6px rgba(0, 0, 0, 0.25)",
     display: "-webkit-box",
-    WebkitLineClamp: 4,
+    WebkitLineClamp: 3,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
   },
